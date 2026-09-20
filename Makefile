@@ -38,7 +38,7 @@ SDK_LINK_FLAGS := -Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_MIN
 # looks at the binary itself for the recorder's symbols.
 SWIFT_FLAGS ?=
 
-.PHONY: build build-app package verify-release test run clean
+.PHONY: build build-app package verify-release test run clean refuse-diagnostic-flags
 
 ## build: build the release binary
 build:
@@ -64,8 +64,12 @@ build-app: build
 	@echo "Built $(APP_BUNDLE) ($(VERSION))"
 
 ## package: build-app, notarize + staple the .app, then zip for release
-package: build-app
+# The refusal is a prerequisite listed first, so that it runs before build-app
+# can put a diagnostic bundle at the release path.
+refuse-diagnostic-flags:
 	@test -z "$(SWIFT_FLAGS)" || { echo "package: refusing to package a build made with SWIFT_FLAGS=$(SWIFT_FLAGS)"; exit 1; }
+
+package: refuse-diagnostic-flags build-app
 	@$(NOTARIZE_SCRIPT) $(APP_BUNDLE) "$(NOTARY_PROFILE)"
 	@cd $(DIST_DIR) && /usr/bin/ditto -c -k --keepParent $(APP_NAME).app $(NAME)-$(VERSION)-darwin-arm64.zip
 	@ls -la $(DIST_DIR)/$(NAME)-$(VERSION)-darwin-arm64.zip
@@ -84,7 +88,14 @@ verify-release:
 			echo "verify-release: FAIL — linked SDK is $$sdk, expected $(MACOS_SDK)."; \
 			echo "  macOS draws an app linked against an old SDK with the previous window chrome."; \
 			exit 1; }
-	@traced=$$(nm "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)" | grep -ci trace); \
+	@syms=$$(nm "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)" 2>/dev/null) || { \
+			echo "verify-release: FAIL — nm could not read the binary."; exit 1; }; \
+		own=$$(printf '%s\n' "$$syms" | grep -c AppDelegate); \
+		traced=$$(printf '%s\n' "$$syms" | grep -ci trace); \
+		test "$$own" -gt 0 || { \
+			echo "verify-release: FAIL — the binary shows none of the app's own symbols, so the recorder's would not show either."; \
+			echo "  A check for absence needs proof that it can see. Was the binary stripped?"; \
+			exit 1; }; \
 		test "$$traced" = "0" || { \
 			echo "verify-release: FAIL — the binary has $$traced symbols of the diagnostic recorder (built with -DTRACE)."; \
 			echo "  'strings' cannot show this: short Swift string literals are stored inline. Rebuild without SWIFT_FLAGS."; \
