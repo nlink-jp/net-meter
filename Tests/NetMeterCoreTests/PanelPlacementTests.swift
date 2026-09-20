@@ -11,7 +11,7 @@ final class PanelPlacementTests: XCTestCase {
         let item = CGRect(x: 2000, y: 2134, width: 100, height: 22)
         let frame = PanelPlacement.frame(itemFrame: item, panelSize: size, visibleFrame: visible)
         XCTAssertEqual(frame.midX, item.midX)
-        XCTAssertEqual(frame.maxY, min(item.minY - PanelPlacement.gap, visible.maxY - PanelPlacement.margin))
+        XCTAssertEqual(frame.maxY, visible.maxY - PanelPlacement.margin, "the item's bottom edge is the visible frame's top")
         XCTAssertEqual(frame.size, size)
     }
 
@@ -50,5 +50,22 @@ final class PanelPlacementTests: XCTestCase {
         let b = PanelPlacement.frame(itemFrame: item, panelSize: CGSize(width: 320, height: 520), visibleFrame: visible)
         XCTAssertEqual(a.maxY, b.maxY)
         XCTAssertEqual(a.minX, b.minX)
+    }
+
+    func testAFractionalHeightNeitherMovesTheTopEdgeNorClipsTheContent() {
+        let item = CGRect(x: 2000, y: 2134, width: 100, height: 22)
+        let whole = PanelPlacement.frame(itemFrame: item, panelSize: size, visibleFrame: visible)
+        let fractional = PanelPlacement.frame(itemFrame: item, panelSize: CGSize(width: 320, height: 520.5), visibleFrame: visible)
+        XCTAssertEqual(fractional.maxY, whole.maxY, "rounding the origin instead of the top edge moved it by half a point")
+        XCTAssertEqual(fractional.height, 521)
+        XCTAssertEqual(fractional.minY, fractional.minY.rounded())
+    }
+
+    func testAnItemOnAScreenWithoutAMenuBarGapStillHangsBelowIt() {
+        // A notched display reports a visible frame that ends below the item's bottom edge.
+        let item = CGRect(x: 1000, y: 1080, width: 100, height: 37)
+        let notched = CGRect(x: 0, y: 0, width: 1728, height: 1070)
+        let frame = PanelPlacement.frame(itemFrame: item, panelSize: size, visibleFrame: notched)
+        XCTAssertEqual(frame.maxY, notched.maxY - PanelPlacement.margin)
     }
 }
