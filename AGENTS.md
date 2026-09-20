@@ -223,6 +223,17 @@ building the thing it is about.
   they are measured here rather than copied. (KB: "メニューバーの NSPopover は
   外側クリックのクローズを `.transient` に任せない" and "メニューバーの NSPopover は
   表示直後に makeKey() する")
+- **The global click monitor also receives the click on our own status item, and
+  before the button's action does.** Measured in a sibling app (nvme-lens, macOS
+  27.0): 20–35 ms earlier, when the app is not active. The monitor closes the
+  panel and the action then arrives. With the default close animation `isShown`
+  is still true at that moment, so the action closes again and nothing is
+  visible; with `popover.animates = false` the action finds the panel closed and
+  opens it again — a re-click never closes it. net-meter keeps the default
+  animation but does not rely on it: `PanelToggle.decide` treats an action that
+  follows a monitor close within 0.25 s as the same click. Do not set
+  `animates = false` without reading this, and do not remove the guard because
+  "it works without it".
 - **Build the popover's content when it opens and release it in
   `popoverDidClose`.** An eagerly created `NSHostingController` kept laying out a
   hidden panel at ~12% CPU in load-spinner. Set

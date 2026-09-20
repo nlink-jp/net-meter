@@ -87,3 +87,30 @@ public enum PopoverClick: Equatable, Sendable {
 
     public var closesPanel: Bool { self == .elsewhere }
 }
+
+/// What a click on the status item does.
+///
+/// On macOS 27 the global mouse-down monitor also receives the click on the app's
+/// own status item, 20–35 ms *before* the button's action runs (measured in a
+/// sibling app). The monitor closes the panel; the action then arrives. With the
+/// default close animation `isShown` is still true at that point and the action
+/// closes again, harmlessly — but that is an accident of timing, and without the
+/// animation the action would find the panel closed and open it again, so a
+/// re-click would never close it. The decision is therefore made explicitly: an
+/// action that follows a monitor close this closely is the same click.
+public enum PanelToggle: Equatable, Sendable {
+    case open
+    case close
+    /// The click that the monitor already acted on.
+    case ignore
+
+    /// Longer than the measured 20–35 ms by a wide margin, shorter than a person's
+    /// deliberate second click.
+    public static let sameClickWindow = 0.25
+
+    public static func decide(isShown: Bool, secondsSinceMonitorClose: Double?) -> PanelToggle {
+        if isShown { return .close }
+        if let elapsed = secondsSinceMonitorClose, elapsed >= 0, elapsed < sameClickWindow { return .ignore }
+        return .open
+    }
+}

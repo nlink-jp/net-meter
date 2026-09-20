@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// Exists only while the panel is open.
     private var panelModel: PanelModel?
     private var clickMonitors: [Any] = []
+    /// When a click monitor last closed the panel, on the `now` clock.
+    private var monitorClosedAt: Double?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         activity = ProcessInfo.processInfo.beginActivity(
@@ -108,9 +110,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func togglePanel() {
-        if popover.isShown {
+        // The global monitor sees the click on our own status item before this
+        // action does; see PanelToggle.
+        switch PanelToggle.decide(isShown: popover.isShown, secondsSinceMonitorClose: monitorClosedAt.map { now() - $0 }) {
+        case .close:
             popover.performClose(nil)
             return
+        case .ignore:
+            monitorClosedAt = nil
+            return
+        case .open:
+            break
         }
         guard let button = statusItem?.button, controller != nil else { return }
 
@@ -179,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func handleClick(_ click: PopoverClick) {
         if click.closesPanel, popover.isShown {
+            monitorClosedAt = now()
             popover.performClose(nil)
         }
     }

@@ -39,6 +39,24 @@ final class PanelTests: XCTestCase {
         XCTAssertEqual(points, [ChartPoint(offset: -180, down: 5, up: 7), ChartPoint(offset: 0, down: 5, up: 7)])
     }
 
+    func testAReClickClosesThePanelWhetherOrNotTheCloseAnimationIsStillRunning() {
+        // Still animating shut: `isShown` is true, the action simply closes.
+        XCTAssertEqual(PanelToggle.decide(isShown: true, secondsSinceMonitorClose: 0.03), .close)
+        // Already shut by the monitor 30 ms ago: the same click must not reopen it.
+        XCTAssertEqual(PanelToggle.decide(isShown: false, secondsSinceMonitorClose: 0.03), .ignore)
+    }
+
+    func testAnOrdinaryClickOpensAndClosesThePanel() {
+        XCTAssertEqual(PanelToggle.decide(isShown: false, secondsSinceMonitorClose: nil), .open)
+        XCTAssertEqual(PanelToggle.decide(isShown: true, secondsSinceMonitorClose: nil), .close)
+    }
+
+    func testADeliberateClickAfterAnOutsideClickStillOpensThePanel() {
+        XCTAssertEqual(PanelToggle.decide(isShown: false, secondsSinceMonitorClose: PanelToggle.sameClickWindow), .open)
+        XCTAssertEqual(PanelToggle.decide(isShown: false, secondsSinceMonitorClose: 2), .open)
+        XCTAssertEqual(PanelToggle.decide(isShown: false, secondsSinceMonitorClose: -1), .open, "a clock oddity never blocks opening")
+    }
+
     func testOnlyAClickElsewhereClosesThePanel() {
         XCTAssertFalse(PopoverClick.statusButton.closesPanel, "the button toggles; closing too would reopen")
         XCTAssertFalse(PopoverClick.insidePanel.closesPanel)
