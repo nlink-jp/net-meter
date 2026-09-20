@@ -24,9 +24,15 @@ Semantic Versioning.
   the first physical interface and never replaces an absent manual choice; rates
   formatted into a number that is never wider than three characters, in bytes or
   bits; and a graph scale shared by both directions with a floor.
+- The panel behind the menu bar item: a three-minute history chart with a fixed
+  window and a scale shared by both directions, the interface's addresses and
+  reported link speed, peaks, totals since launch, all settings, launch at
+  login, and the version — selectable, at the bottom. Its content exists only
+  while it is open, and outside clicks close it even where macOS's own
+  transient behaviour misses them.
 - The live menu bar meter: counters read once a second, shown as rates and a
-  graph; settings for the interface, the display mode, the unit and colour in
-  the item's menu, saved in UserDefaults and applied at once. About 0.3% CPU
+  graph; settings for the interface, the display mode, the unit and colour,
+  saved in UserDefaults and applied at once. About 0.3% CPU
   while resident (measured on an M-series Mac over 30 seconds).
 - The menu bar image (ADR-0002): two lines of numbers and a mirrored graph at a
   width that depends only on the display mode, monochrome as a template image

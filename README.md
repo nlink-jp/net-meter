@@ -25,7 +25,10 @@ the centre line, downstream below it. A dash means there is no value for this
 second; a dimmed item means the selected interface is not connected. The numbers
 never show another interface in its place.
 
-Click the item for the settings:
+Click the item to open the panel: the last three minutes as a chart, the
+interface's addresses and link speed, the peaks of those three minutes, and the
+totals since launch. The link speed is what the interface reports, not a limit on
+what it carries. The settings are in the same panel:
 
 | Setting | Choices |
 |---|---|
@@ -33,6 +36,9 @@ Click the item for the settings:
 | Display | Numbers and graph, numbers only, or graph only. The width changes with this setting and with nothing else |
 | Unit | Bytes per second (KB/s, MB/s) or bits per second (kbps, Mbps) |
 | Colour | Off: the item takes the menu bar's own colour, like the system's items. On: upstream and downstream get their own colours |
+| Launch at login | Off by default. macOS may ask you to approve it in System Settings › General › Login Items |
+
+The version is at the bottom of the panel and can be selected and copied.
 
 Rates below about 1 KB/s alternate between 0 and 1: macOS reports the byte
 counters to an ordinary app in steps of 1 KiB.

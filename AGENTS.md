@@ -8,11 +8,13 @@ Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI popover, macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
-**Development Phase 2 in progress.** The menu bar item is live: two lines of rates
-and a mirrored graph, redrawn every second, with the settings in a menu. That
-menu is interim — the RFP's panel (history chart, interface details, peaks,
-totals, settings, version) replaces it next, with status-lens as the reference
-for popover dismissal. The pure core underneath is in place
+**Development Phase 2 in progress.** The menu bar item is live — two lines of
+rates and a mirrored graph, redrawn every second — and clicking it opens the
+panel: a three-minute history chart, the interface's addresses and link speed,
+peaks, totals since launch, the settings, launch at login, the version and Quit.
+Still open in Phase 2: tuning on the real menu bar, and checking on hardware
+that the panel closes on every kind of outside click and stays open while one of
+its pickers is used. The pure core underneath is in place
 — the rate rule (ADR-0001), the meter with per-interface history, interface
 resolution and the selection list, rate formatting, graph scaling — and
 `NetMeterSystem` asks the OS: counters through `sysctl`, the preference order,
@@ -53,6 +55,8 @@ Sources/
     SingleInstance.swift   singleInstanceDecision() — startup duplicate guard (pids in, decision out)
     AppVersion.swift       displayVersion(bundleShortVersion:) — what the user is shown, "dev" outside a bundle
     SymbolName.swift       Every SF Symbol name the app may ask for; the only place a name is spelled
+    Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points, PopoverClick.closesPanel
+    LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval (system state, never persisted by the app)
     SettingsStore.swift    SettingsStore protocol + the in-memory store tests use (UserDefaults store: NetMeterSystem)
     CounterReading.swift   InterfaceCounters (bytes, packets, link speed) and the CounterSource protocol
     RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
@@ -67,19 +71,25 @@ Sources/
     SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2: bytes, packets, link speed per interface
     SystemInterfaceInfoSource.swift  Display names (SystemConfiguration) and numeric addresses (getifaddrs; IPv4 first, no link-local)
     PathOrderMonitor.swift     NWPathMonitor -> [PathInterface], passed on as given (duplicates and tunnels included)
+    UserDefaultsSettingsStore.swift  One string per key
+    LoginItemService.swift     SMAppService.mainApp, gated on a real bundle; `.notFound` reads as off, not as unavailable
   NetMeterUI/            Drawing and views, as a library so tests can render it offscreen
     StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish, scale) -> image for button.image; fixed width per mode/unit
     MeterController.swift  Readings -> what is on display; every OS dependency injected; a setting reaches the display at once
+    PanelModel.swift       PanelSnapshot (a value, settings included) + the one ObservableObject the panel observes
+    PanelView.swift        The SwiftUI panel: fixed width, height from content; Swift Charts history with a fixed window and scale
     UIStrings.swift        Every user-visible string, one language throughout; also the accessibility value of the item
   NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
-    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, interim settings menu
+    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering,
+                           the popover: content built on open and released on close, makeKey(), click monitors
 Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
                          ReplayTests is opt-in: NET_METER_REPLAY_LOG=<watch log> replays a recording through the real Meter
 Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
 Tests/NetMeterUITests/   Offscreen, pixel by pixel: width independent of values, no colour in the template finish,
                          upstream above the centre and downstream below, gaps, dimmed "absent", right-aligned numbers.
-                         StatusPreviewTests is opt-in: NET_METER_PREVIEW_DIR=<dir> writes a magnified sheet to look at
+                         PanelViewTests lays the panel out offscreen: width fixed, height from content, no jump between states.
+                         Opt-in: NET_METER_PREVIEW_DIR=<dir> writes the status item sheet and the panel as PNGs to look at
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
                          Vendored byte-identical from nlink-jp/.github/templates — never edit here
@@ -195,19 +205,24 @@ building the thing it is about.
   fixed-length item; otherwise every change in digit count shifts the
   neighbouring icons. A panel's height, by contrast, is never fixed from today's
   content. (KB: "ビューの寸法を「今日の中身」で測って固定しない")
-- **`makeKey()` and click monitors come as a pair.** A status item click does not
-  activate an accessory app, so a popover that is merely shown is drawn inactive —
-  visibly dimmed under Liquid Glass. Call `makeKey()` on the popover's window
-  right after `show(relativeTo:)`. That activates the app, and activation breaks
-  `NSPopover`'s `.transient` outside-click dismissal, so **dismissal must never
-  rely on `.transient`**: install global + local mouse-down monitors while the
-  popover is shown and remove them in `popoverDidClose`. The local monitor must
-  ignore the status item button's window, or a click on the button closes and
-  reopens. Under Swift 6 the handlers are nonisolated — wrap in
-  `MainActor.assumeIsolated` and keep the `NSEvent` out of its return value.
-  The reference implementation is **status-lens** (`installPopoverClickMonitors`),
-  not load-spinner, which calls `makeKey()` without the monitors. (KB:
-  "メニューバーの NSPopover は表示直後に makeKey() する")
+- **The panel takes key status on open, and outside clicks are watched
+  explicitly — two separate needs.** A status item click does not activate an
+  accessory app, so a popover that is merely shown is drawn inactive, visibly
+  dimmed under Liquid Glass: call `makeKey()` on its window right after
+  `show(relativeTo:)`. Independently of that, **`.transient` alone misses outside
+  clicks that take no activation** — an empty stretch of the menu bar, another
+  app's non-activating panel — so global + local mouse-down monitors are
+  installed for as long as the panel is shown and removed in `popoverDidClose`.
+  The local monitor ignores the status item button's window (its action toggles;
+  closing too would reopen) and the panel's own; that decision is
+  `PopoverClick.closesPanel`, pinned by a test. Under Swift 6 the handlers are
+  nonisolated: wrap the body in `MainActor.assumeIsolated` and read
+  `event.window` outside it. An earlier version of this entry said `makeKey()`
+  activates the app and that activation breaks `.transient`; measured on macOS
+  27.0 in two sibling apps, neither holds. The causal details differ per app, so
+  they are measured here rather than copied. (KB: "メニューバーの NSPopover は
+  外側クリックのクローズを `.transient` に任せない" and "メニューバーの NSPopover は
+  表示直後に makeKey() する")
 - **Build the popover's content when it opens and release it in
   `popoverDidClose`.** An eagerly created `NSHostingController` kept laying out a
   hidden panel at ~12% CPU in load-spinner. Set

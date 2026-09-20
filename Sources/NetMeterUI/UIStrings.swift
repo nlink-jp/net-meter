@@ -8,7 +8,7 @@ public enum UIStrings {
     public static let interface = "Interface"
     public static let display = "Display"
     public static let unit = "Unit"
-    public static let colour = "Colour Upstream and Downstream"
+    public static let colour = "Colour up and down"
     public static let otherInterfaces = "Other Interfaces"
     public static let quit = "Quit net-meter"
     public static let noInterface = "No network interface"
@@ -23,14 +23,29 @@ public enum UIStrings {
 
     public static func unit(_ unit: RateUnit) -> String {
         switch unit {
-        case .bytes: return "Bytes per Second (MB/s)"
-        case .bits: return "Bits per Second (Mbps)"
+        case .bytes: return "Bytes (MB/s)"
+        case .bits: return "Bits (Mbps)"
         }
     }
 
     public static func absent(_ label: String) -> String { "\(label) — not connected" }
     public static func automaticChoice(_ label: String) -> String { "\(label) — automatic" }
     public static func version(_ version: String) -> String { "net-meter \(version)" }
+
+    // The panel
+    public static let manual = "Manual"
+    public static let address = "Address"
+    public static let linkSpeed = "Link speed"
+    public static let peak = "Peak, last 3 min"
+    public static let total = "Total since launch"
+    public static let launchAtLogin = "Launch at login"
+    public static let approveLoginItem = "Approve in System Settings › Login Items"
+    public static let loginItemUnavailable = "Available when running from the app bundle"
+    public static let quitShort = "Quit"
+    public static let none = "—"
+    public static let measuring = "Measuring…"
+    public static let chartNow = "now"
+    public static func minutesAgo(_ minutes: Int) -> String { "\(minutes) min" }
 
     /// What VoiceOver reads, and what a script can read from the accessibility tree.
     public static func spoken(_ reading: MeterReading, unit: RateUnit) -> String {

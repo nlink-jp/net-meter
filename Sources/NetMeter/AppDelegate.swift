@@ -2,20 +2,27 @@ import AppKit
 import NetMeterCore
 import NetMeterSystem
 import NetMeterUI
+import SwiftUI
 
-/// Wiring only: the OS sources, the one-second timer, the status item, and —
-/// until the panel replaces it — a menu for the settings. The version stays
-/// visible in whatever takes the menu's place.
+/// Wiring only: the OS sources, the one-second timer, the status item and the
+/// panel's popover.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private var controller: MeterController?
     private let pathMonitor = PathOrderMonitor()
     private let infoSource = SystemInterfaceInfoSource()
+    private let loginItem = LoginItemService()
     private var timer: Timer?
     /// Held for the app's lifetime: App Nap would otherwise freeze the timer of
     /// an app with no visible window, hours after launch.
     private var activity: NSObjectProtocol?
+    private var now: () -> Double = { 0 }
+
+    private let popover = NSPopover()
+    /// Exists only while the panel is open.
+    private var panelModel: PanelModel?
+    private var clickMonitors: [Any] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         activity = ProcessInfo.processInfo.beginActivity(
@@ -26,13 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Seconds on a clock that keeps running during sleep (ADR-0001).
         let clock = ContinuousClock()
         let start = clock.now
+        now = {
+            let elapsed = clock.now - start
+            return Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        }
+
         let controller = MeterController(
             counters: SysctlCounterSource(),
             pathOrder: { [pathMonitor] in pathMonitor.current },
-            now: {
-                let elapsed = clock.now - start
-                return Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-            },
+            now: now,
             store: UserDefaultsSettingsStore()
         )
         controller.onChange = { [weak self] in self?.render() }
@@ -40,18 +49,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.imagePosition = .imageOnly
-        let menu = NSMenu()
-        menu.delegate = self
-        item.menu = menu
+        item.button?.target = self
+        item.button?.action = #selector(togglePanel)
         statusItem = item
+
+        popover.behavior = .transient
+        popover.delegate = self
 
         pathMonitor.start { [weak self] _ in
             Task { @MainActor in self?.controller?.refresh() }
         }
 
         // `.common`, not the default mode: the run loop leaves the default mode
-        // while a menu is tracking, and the display would freeze exactly while
-        // someone is looking at it.
+        // while a menu or a control in the panel is tracking, and the display
+        // would freeze exactly while someone is looking at it.
         let timer = Timer(timeInterval: 1, target: self, selector: #selector(tick), userInfo: nil, repeats: true)
         timer.tolerance = 0.1
         RunLoop.main.add(timer, forMode: .common)
@@ -76,105 +87,110 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = StatusRenderer.image(content: content, finish: finish, scale: scale)
         button.setAccessibilityLabel("net-meter")
         button.setAccessibilityValue(UIStrings.spoken(content.reading, unit: content.unit))
+
+        // The panel is only kept up to date while it is open.
+        panelModel?.snapshot = snapshot()
     }
 
-    // MARK: the interim settings menu
+    // MARK: the panel
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        guard let controller else { return }
-        menu.removeAllItems()
-        let settings = controller.settings
-        let info = infoSource.info()
-        let entries = InterfaceCatalog.entries(
-            available: controller.meter.availableInterfaces,
-            info: info,
+    private func snapshot() -> PanelSnapshot {
+        guard let controller else { fatalError("the controller exists before anything asks for a snapshot") }
+        return controller.panelSnapshot(
+            info: infoSource.info(),
             pathOrder: pathMonitor.current,
-            selection: settings.selection
+            loginItem: loginItem.state,
+            version: displayVersion(
+                bundleShortVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ),
+            now: now()
         )
+    }
 
-        // What is on display right now.
-        let heading: String
-        switch controller.resolved {
-        case .present(let name):
-            let label = InterfaceCatalog.label(name: name, displayName: info[name]?.displayName)
-            heading = settings.selection == .automatic ? UIStrings.automaticChoice(label) : label
-        case .absent:
-            if case .manual(let name) = settings.selection {
-                heading = UIStrings.absent(InterfaceCatalog.label(name: name, displayName: info[name]?.displayName))
-            } else {
-                heading = UIStrings.noInterface
+    @objc private func togglePanel() {
+        if popover.isShown {
+            popover.performClose(nil)
+            return
+        }
+        guard let button = statusItem?.button, controller != nil else { return }
+
+        // Built on open and released on close: a SwiftUI tree that exists while
+        // hidden keeps laying out.
+        let model = PanelModel(snapshot: snapshot())
+        model.changeSettings = { [weak self] in self?.controller?.settings = $0 }
+        model.setLoginItem = { [weak self] on in
+            guard let self else { return }
+            do {
+                try self.loginItem.set(on)
+            } catch {
+                NSLog("net-meter: launch at login could not be changed: \(error.localizedDescription)")
+            }
+            self.panelModel?.snapshot = self.snapshot()
+        }
+        model.quit = { NSApp.terminate(nil) }
+        panelModel = model
+
+        let hosting = NSHostingController(rootView: PanelView(model: model))
+        hosting.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hosting
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+        // A status item click does not activate an accessory app, so the panel
+        // opens without key status and its material is drawn inactive — visibly
+        // dimmed. Taking key status brightens it. This is about drawing only; it
+        // is not why the click monitors exist.
+        hosting.view.window?.makeKey()
+        installClickMonitors()
+    }
+
+    /// `.transient` closes the panel only when the outside click lands in a window
+    /// that takes activation. A click on an empty stretch of the menu bar, or on
+    /// another app's non-activating panel, is missed — so outside clicks are
+    /// watched explicitly for as long as the panel is shown.
+    private func installClickMonitors() {
+        removeClickMonitors()
+        let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+        let global = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleClick(.elsewhere)
             }
         }
-        menu.addItem(disabled(heading))
-        menu.addItem(.separator())
-
-        let interfaces = NSMenu()
-        interfaces.addItem(choice(UIStrings.automatic, on: settings.selection == .automatic) { $0.selection = .automatic })
-        interfaces.addItem(.separator())
-        let others = NSMenu()
-        for entry in entries {
-            let title = entry.isAvailable ? entry.label : UIStrings.absent(entry.label)
-            let item = choice(title, on: settings.selection == .manual(entry.name)) { $0.selection = .manual(entry.name) }
-            (entry.isHardwarePort || !entry.isAvailable ? interfaces : others).addItem(item)
+        let local = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+            // The event is not Sendable: read what is needed out here.
+            let window = event.window
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let click: PopoverClick
+                if window === self.statusItem?.button?.window {
+                    click = .statusButton
+                } else if let window, window === self.popover.contentViewController?.view.window
+                            || window.parent === self.popover.contentViewController?.view.window {
+                    // The panel itself, or a menu one of its pickers opened.
+                    click = .insidePanel
+                } else {
+                    click = .elsewhere
+                }
+                self.handleClick(click)
+            }
+            return event
         }
-        if others.numberOfItems > 0 {
-            interfaces.addItem(.separator())
-            interfaces.addItem(submenu(UIStrings.otherInterfaces, others))
+        clickMonitors = [global, local].compactMap { $0 }
+    }
+
+    private func handleClick(_ click: PopoverClick) {
+        if click.closesPanel, popover.isShown {
+            popover.performClose(nil)
         }
-        menu.addItem(submenu(UIStrings.interface, interfaces))
-
-        let display = NSMenu()
-        for mode in DisplayMode.allCases {
-            display.addItem(choice(UIStrings.displayMode(mode), on: settings.displayMode == mode) { $0.displayMode = mode })
-        }
-        menu.addItem(submenu(UIStrings.display, display))
-
-        let units = NSMenu()
-        for unit in RateUnit.allCases {
-            units.addItem(choice(UIStrings.unit(unit), on: settings.unit == unit) { $0.unit = unit })
-        }
-        menu.addItem(submenu(UIStrings.unit, units))
-
-        menu.addItem(choice(UIStrings.colour, on: settings.coloured) { $0.coloured.toggle() })
-
-        menu.addItem(.separator())
-        let version = displayVersion(
-            bundleShortVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        )
-        menu.addItem(disabled(UIStrings.version(version)))
-        menu.addItem(NSMenuItem(title: UIStrings.quit, action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
     }
 
-    private func disabled(_ title: String) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
+    private func removeClickMonitors() {
+        clickMonitors.forEach(NSEvent.removeMonitor)
+        clickMonitors = []
     }
 
-    private func submenu(_ title: String, _ menu: NSMenu) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.submenu = menu
-        return item
+    func popoverDidClose(_ notification: Notification) {
+        removeClickMonitors()
+        popover.contentViewController = nil
+        panelModel = nil
     }
-
-    private func choice(_ title: String, on: Bool, change: @escaping (inout AppSettings) -> Void) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(applyChoice(_:)), keyEquivalent: "")
-        item.target = self
-        item.state = on ? .on : .off
-        item.representedObject = SettingsChange(apply: change)
-        return item
-    }
-
-    @objc private func applyChoice(_ sender: NSMenuItem) {
-        guard let change = sender.representedObject as? SettingsChange, let controller else { return }
-        var settings = controller.settings
-        change.apply(&settings)
-        controller.settings = settings
-    }
-}
-
-/// A menu item's effect on the settings, boxed so it can ride in `representedObject`.
-private final class SettingsChange {
-    let apply: (inout AppSettings) -> Void
-    init(apply: @escaping (inout AppSettings) -> Void) { self.apply = apply }
 }
