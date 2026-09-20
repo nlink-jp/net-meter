@@ -19,6 +19,11 @@ Semantic Versioning.
   is none (ADR-0001): deltas modulo 2^32, samples after a stretched interval
   discarded, and counter resets told apart from wraps by the packet counters
   rather than the reported link speed. Not wired to the display yet.
+- The rest of the pure core: a meter that keeps a baseline, a history, running
+  totals and peaks for every interface at once; automatic selection that takes
+  the first physical interface and never replaces an absent manual choice; rates
+  formatted into a number that is never wider than three characters, in bytes or
+  bits; and a graph scale shared by both directions with a floor.
 - Every SF Symbol name the app uses is listed in one place and resolved by a
   test, so a name that does not exist fails the build instead of leaving an
   invisible menu bar item.

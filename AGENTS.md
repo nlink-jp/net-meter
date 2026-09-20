@@ -10,8 +10,11 @@ the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
 **Development Phase 1 in progress.** The app itself is still the scaffold shell: it
 starts, guards against a second instance, and shows a placeholder status item
-whose menu carries the version and Quit. The core is being built underneath it —
-so far the rule that turns two counter readings into a rate (ADR-0001). The plan
+whose menu carries the version and Quit. The pure core underneath it is in place
+— the rate rule (ADR-0001), the meter with per-interface history, interface
+resolution, rate formatting, graph scaling — but nothing reads the OS yet: the
+`sysctl` reader and the interface information sources come next, and the display
+is Phase 2. The plan
 is in the RFP: Phase 1 is the pure core plus the checks on real systems, Phase 2
 the drawing and the panel, Phase 3 the release.
 
@@ -46,6 +49,11 @@ Sources/
     SymbolName.swift       Every SF Symbol name the app may ask for; the only place a name is spelled
     CounterReading.swift   InterfaceCounters (bytes, packets, link speed) and the CounterSource protocol
     RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
+    Meter.swift            Per-interface baseline, history (nil = no value), totals and peaks; time is passed in, never read
+    RingBuffer.swift       Fixed-capacity history storage
+    GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
+    InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
+    RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
   NetMeter/              Executable (AppKit; SwiftUI arrives with the panel)
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
