@@ -205,7 +205,7 @@ and the two were compared to confirm this. The reason for the difference is unco
 | Environment | Floored to 1 KiB | Truncated to 32 bits |
 |-------------|------------------|----------------------|
 | macOS 27.0 (real machine) | Yes | Yes (the value is the true value modulo 2^32) |
-| macOS 26.6.2 (VM) | Yes | Unconfirmed (the counters were below 4 GiB; to be checked in Phase 1) |
+| macOS 26.6.2 (VM) | Yes | ~~Unconfirmed (the counters were below 4 GiB; to be checked in Phase 1)~~ Yes (confirmed 2026-09-20 — see Amendment A10) |
 
 Consequences for the design:
 
@@ -306,6 +306,14 @@ silently dropped. The selection stays, shown as absent.
 The organization's conventions require reusable findings to be fed back as part of the work
 that produced them, not deferred. A finding is fed back once it is settled; Phase 3 only
 confirms that nothing was missed.
+
+**A10. Results of the Phase 1 measurements (additions to the table in §7 and to §3)**
+Truncation to 32 bits was confirmed on macOS 26.6.2 as well (after pushing 4.5 GB in, a true
+value of 5,438,231,389 was read as 1,143,263,232). Packet counters arrive unaltered on both
+OS versions. The value readable as link speed is not a ceiling (one interface reported
+100 Mbps while carrying 2.3 Gbps, another reported 0) and is not used to accept or reject a
+sample. The rules, including the wrap-versus-reset distinction, are set out in
+[ADR-0001](adr/0001-counter-readings-to-rates.md).
 
 ---
 
