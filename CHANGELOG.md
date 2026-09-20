@@ -15,6 +15,10 @@ Semantic Versioning.
 - `make test` checks the documents as well as the code: relative links resolve,
   every English document has its Japanese mirror, and each pair names the same
   flags, make targets and snake_case identifiers.
+- The rule that turns two counter readings into a rate, or into the reason there
+  is none (ADR-0001): deltas modulo 2^32, samples after a stretched interval
+  discarded, and counter resets told apart from wraps by the packet counters
+  rather than the reported link speed. Not wired to the display yet.
 - Every SF Symbol name the app uses is listed in one place and resolved by a
   test, so a name that does not exist fails the build instead of leaving an
   invisible menu bar item.

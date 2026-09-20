@@ -8,11 +8,12 @@ Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI popover, macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
-**Scaffold stage.** The app starts, guards against a second instance, and shows a
-placeholder status item whose menu carries the version and Quit. Nothing reads a
-network counter yet. The plan is in the RFP: development Phase 1 is the pure core
-plus the checks on real systems, Phase 2 the drawing and the panel, Phase 3 the
-release.
+**Development Phase 1 in progress.** The app itself is still the scaffold shell: it
+starts, guards against a second instance, and shows a placeholder status item
+whose menu carries the version and Quit. The core is being built underneath it —
+so far the rule that turns two counter readings into a rate (ADR-0001). The plan
+is in the RFP: Phase 1 is the pure core plus the checks on real systems, Phase 2
+the drawing and the panel, Phase 3 the release.
 
 ## Build & test
 
@@ -28,8 +29,8 @@ release.
   linked SDK (run before upload).
 - `make brew` — generate the Homebrew cask from the built zip into the local
   `nlink-jp/homebrew-tap` checkout (see `scripts/release-brew.mk`).
-- `make test` — `swift test`, then `scripts/test_check_docs.py` and
-  `scripts/check_docs.py`.
+- `make test` — `swift test`, then `scripts/test_check_docs.py`,
+  `spikes/test_analyze_watch.py` and `scripts/check_docs.py`.
 - `make run` — `swift run` (debug). **Quit a running copy first.** The
   single-instance guard does not cover this path: a bare binary has no bundle
   identifier, so it starts next to a running `.app` and a second menu bar item
@@ -43,6 +44,8 @@ Sources/
     SingleInstance.swift   singleInstanceDecision() — startup duplicate guard (pids in, decision out)
     AppVersion.swift       displayVersion(bundleShortVersion:) — what the user is shown, "dev" outside a bundle
     SymbolName.swift       Every SF Symbol name the app may ask for; the only place a name is spelled
+    CounterReading.swift   InterfaceCounters (bytes, packets, link speed) and the CounterSource protocol
+    RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
   NetMeter/              Executable (AppKit; SwiftUI arrives with the panel)
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
@@ -54,6 +57,8 @@ scripts/
   check_docs.py          Links resolve; en/ja mirrors exist and name the same identifiers; no retired name in use
   test_check_docs.py     Shows each of those rules failing on a fixture tree
 spikes/                  Measurement code the design rests on. Not part of the package, never shipped
+                         counters.swift (one bracketable reading), watch.swift (per-second JSON log),
+                         analyze_watch.py + its tests, path_order.swift
 docs/{en,ja}/            RFP; ADRs go in docs/{en,ja}/adr/ (4-digit number + slug, org ADR header with `Binds: net-meter`)
 assets/                  AppIcon-1024.png goes here (absent: the app builds without an icon)
 Info.plist               Bundle template at the repo root (${VERSION}, ${BUNDLE_ID}, ${APP_NAME} substituted by `make build-app`)
@@ -71,25 +76,29 @@ Info.plist               Bundle template at the repo root (${VERSION}, ${BUNDLE_
   anyone having run it; it is not.
 - **A byte counter's delta is always taken modulo 2^32.** The `if_data64` fields
   are 64 bits wide, but an unprivileged process is handed the true value modulo
-  2^32, floored to 1 KiB (macOS 27.0, wired: two comparisons bracketed by
-  `netstat` readings, run independently; the flooring also once on macOS 26.6.2,
-  where truncation is still unmeasured). 1024 divides 2^32, so flooring and the modulus commute, and
-  differencing modulo 2^32 is correct in both regimes — as long as one sample's
-  increase stays below 4 GiB. "The field is 64-bit, so no wrap handling is
-  needed" is false.
+  2^32, floored to 1 KiB (measured on macOS 27.0 and on macOS 26.6.2, each
+  bracketed by `netstat` readings with the true counter past 2^32; counts in
+  ADR-0001). Packet counters arrive unaltered. 1024 divides 2^32, so flooring and
+  the modulus commute, and differencing modulo 2^32 is correct whether or not an
+  OS truncates — as long as one sample's increase stays below 4 GiB. "The field
+  is 64-bit, so no wrap handling is needed" is false.
 - **A sample whose elapsed time is too long is discarded and the baseline
   re-established, unconditionally.** "Below 4 GiB per sample" only holds while the
   interval is bounded; after a sleep or a stalled timer the delta modulo 2^32 is
   ambiguous. Elapsed time is measured with a clock that keeps running while the
   Mac sleeps (`ContinuousClock`), so that a sleep shows up as a long interval
-  instead of hiding inside a normal-looking one. The threshold is set in Phase 1.
+  instead of hiding inside a normal-looking one. The threshold is 3 seconds
+  (ADR-0001).
 - **A wrap is not a reset.** Counters can restart — a tunnel interface being
   re-created is the expected case; what a wake from sleep does to them is a
   hypothesis until Phase 1 measures it. A sample judged to be a reset is
   discarded and the baseline re-established; it must never surface as a
-  multi-gigabyte spike. A link-speed cap alone is not enough: if the delta after
-  a reset is spread evenly over 4 GiB, a 10GbE cap accepts roughly three in ten.
-  The rule is decided from Phase 1 measurements and recorded in an ADR.
+  multi-gigabyte spike. **ADR-0001 is the rule**: an interface that vanishes
+  loses its baseline; a packet counter that went backwards, or bytes arriving
+  without packets to carry them, is a reset. **The reported link speed is never
+  used to judge a sample** — measured: a virtual NIC reported 100 Mbps while
+  carrying 2.3 Gbps, and another reported 0. Changing a constant or the order of
+  the rules means a new ADR, not an edit to `RateRule`.
 - **Rates divide by measured elapsed time.** Timers get coalesced; never assume
   the interval was 1 second.
 - **Every state has something to show, and "absent" is not zero.** A selected
