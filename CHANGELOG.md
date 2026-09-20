@@ -24,6 +24,10 @@ Semantic Versioning.
   the first physical interface and never replaces an absent manual choice; rates
   formatted into a number that is never wider than three characters, in bytes or
   bits; and a graph scale shared by both directions with a floor.
+- The menu bar image (ADR-0002): two lines of numbers and a mirrored graph at a
+  width that depends only on the display mode, monochrome as a template image
+  or coloured to suit the menu bar the button reports, pixel-aligned at 1x and
+  2x, with "no value" drawn as a dash and "absent" dimmed.
 - Interface labels ("Ethernet (en0)") and the manual selection list: hardware
   ports first in the OS preference order, the rest by name, loopback left out,
   and a manual choice that is currently absent kept in the list.

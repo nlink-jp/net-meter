@@ -24,15 +24,18 @@ final class SymbolNameTests: XCTestCase {
 
     func testAppSourcesNeverSpellASymbolNameAsALiteral() throws {
         // A literal would bypass the list the first test walks.
-        let appSources = URL(fileURLWithPath: #filePath)
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // NetMeterCoreTests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // package root
-            .appendingPathComponent("Sources/NetMeter")
-        let files = try FileManager.default
-            .contentsOfDirectory(at: appSources, includingPropertiesForKeys: nil)
-            .filter { $0.pathExtension == "swift" }
-        XCTAssertFalse(files.isEmpty, "no app sources found at \(appSources.path)")
+        var files: [URL] = []
+        for directory in ["Sources/NetMeter", "Sources/NetMeterUI"] {
+            let found = try FileManager.default
+                .contentsOfDirectory(at: root.appendingPathComponent(directory), includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "swift" }
+            XCTAssertFalse(found.isEmpty, "no sources found in \(directory)")
+            files += found
+        }
 
         let literal = try NSRegularExpression(pattern: #"system(Symbol)?Name:\s*""#)
         for file in files {

@@ -18,11 +18,17 @@ let package = Package(
             name: "NetMeterSystem",
             dependencies: ["NetMeterCore"]
         ),
-        // The menu bar app. `resources:` stays empty on purpose: SwiftPM's
-        // `Bundle.module` does not look inside an assembled .app bundle.
+        // Drawing and views. A library rather than part of the executable so that
+        // tests can render it offscreen, pixel by pixel, without launching the app.
+        .target(
+            name: "NetMeterUI",
+            dependencies: ["NetMeterCore"]
+        ),
+        // The menu bar app: wiring only. `resources:` stays empty on purpose —
+        // SwiftPM's `Bundle.module` does not look inside an assembled .app bundle.
         .executableTarget(
             name: "NetMeter",
-            dependencies: ["NetMeterCore", "NetMeterSystem"],
+            dependencies: ["NetMeterCore", "NetMeterSystem", "NetMeterUI"],
             resources: []
         ),
         .testTarget(
@@ -32,6 +38,10 @@ let package = Package(
         .testTarget(
             name: "NetMeterSystemTests",
             dependencies: ["NetMeterCore", "NetMeterSystem"]
+        ),
+        .testTarget(
+            name: "NetMeterUITests",
+            dependencies: ["NetMeterCore", "NetMeterUI"]
         ),
     ]
 )

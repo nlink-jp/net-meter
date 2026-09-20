@@ -28,20 +28,21 @@ public enum RateFormatter {
     /// sample, the first second before a baseline exists.
     public static let noValue = "—"
 
+    /// Every unit label `format` can produce for `unit`, smallest first. The
+    /// status item reserves room for the widest of them.
+    public static func units(for unit: RateUnit) -> [String] {
+        switch unit {
+        case .bytes: return ["KB/s", "MB/s", "GB/s"]
+        case .bits: return ["kbps", "Mbps", "Gbps"]
+        }
+    }
+
     /// SI prefixes (1 MB = 1000 KB), matching Finder and Activity Monitor. The
     /// smallest unit is kilo: the byte counters are floored to 1 KiB, so
     /// anything finer would be invented precision.
     public static func format(bytesPerSecond: Double, unit: RateUnit) -> FormattedRate {
-        let units: [String]
-        var value: Double
-        switch unit {
-        case .bytes:
-            units = ["KB/s", "MB/s", "GB/s"]
-            value = bytesPerSecond / 1_000
-        case .bits:
-            units = ["kbps", "Mbps", "Gbps"]
-            value = bytesPerSecond * 8 / 1_000
-        }
+        let units = units(for: unit)
+        var value = (unit == .bits ? bytesPerSecond * 8 : bytesPerSecond) / 1_000
         guard value.isFinite, value > 0 else { return FormattedRate(number: "0", unit: units[0]) }
 
         var index = 0

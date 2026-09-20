@@ -57,18 +57,24 @@ Sources/
     RingBuffer.swift       Fixed-capacity history storage
     GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
+    Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate), GraphWindow columns
     InterfaceCatalog.swift "Ethernet (en0)" labels and the manual selection list (hardware ports first; an absent choice stays listed)
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
   NetMeterSystem/        The thin layer that asks the OS. No logic worth a unit test lives here
     SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2: bytes, packets, link speed per interface
     SystemInterfaceInfoSource.swift  Display names (SystemConfiguration) and numeric addresses (getifaddrs; IPv4 first, no link-local)
     PathOrderMonitor.swift     NWPathMonitor -> [PathInterface], passed on as given (duplicates and tunnels included)
-  NetMeter/              Executable (AppKit; SwiftUI arrives with the panel)
+  NetMeterUI/            Drawing and views, as a library so tests can render it offscreen
+    StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish, scale) -> image for button.image; fixed width per mode/unit
+  NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
 Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
                          ReplayTests is opt-in: NET_METER_REPLAY_LOG=<watch log> replays a recording through the real Meter
 Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
+Tests/NetMeterUITests/   Offscreen, pixel by pixel: width independent of values, no colour in the template finish,
+                         upstream above the centre and downstream below, gaps, dimmed "absent", right-aligned numbers.
+                         StatusPreviewTests is opt-in: NET_METER_PREVIEW_DIR=<dir> writes a magnified sheet to look at
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
                          Vendored byte-identical from nlink-jp/.github/templates — never edit here
