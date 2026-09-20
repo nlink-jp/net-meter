@@ -104,6 +104,10 @@ public struct Meter: Sendable {
         return (rates.map(\.downBytesPerSecond).max() ?? 0, rates.map(\.upBytesPerSecond).max() ?? 0)
     }
 
+    /// What the interface reports as its speed, in bits per second; 0 when it
+    /// reports none or is not there.
+    public func linkSpeed(for name: String) -> UInt64 { tracks[name]?.baseline?.linkSpeed ?? 0 }
+
     /// Interfaces that had counters in the last reading.
     public var availableInterfaces: Set<String> {
         Set(tracks.filter { $0.value.baseline != nil }.keys)
