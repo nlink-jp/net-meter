@@ -31,6 +31,13 @@ MACOS_MIN := $(shell sed -n -e 's/.*\.macOS(\.v\([0-9][0-9]*\)).*/\1.0/p' \
 MACOS_SDK := $(shell xcrun --sdk macosx --show-sdk-version)
 SDK_LINK_FLAGS := -Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_MIN) -Xlinker $(MACOS_SDK)
 
+# Extra compiler flags. Empty for a release. A diagnostic bundle that records
+# clicks, actions, menu tracking and activation is built with
+#   make build-app SWIFT_FLAGS="-Xswiftc -DTRACE" DIST_DIR=dist/trace
+# and is never released: `package` refuses non-empty flags, and `verify-release`
+# looks at the binary itself for the recorder's symbols.
+SWIFT_FLAGS ?=
+
 .PHONY: build build-app package verify-release test run clean
 
 ## build: build the release binary
@@ -38,7 +45,7 @@ build:
 	@mkdir -p $(DIST_DIR)
 	@test -n "$(MACOS_MIN)" || { echo "Makefile: no macOS deployment target found in Package.swift"; exit 1; }
 	@test -n "$(MACOS_SDK)" || { echo "Makefile: xcrun could not report the macOS SDK version"; exit 1; }
-	swift build -c release $(SDK_LINK_FLAGS)
+	swift build -c release $(SDK_LINK_FLAGS) $(SWIFT_FLAGS)
 
 ## build-app: assemble the signed .app bundle
 build-app: build
@@ -58,6 +65,7 @@ build-app: build
 
 ## package: build-app, notarize + staple the .app, then zip for release
 package: build-app
+	@test -z "$(SWIFT_FLAGS)" || { echo "package: refusing to package a build made with SWIFT_FLAGS=$(SWIFT_FLAGS)"; exit 1; }
 	@$(NOTARIZE_SCRIPT) $(APP_BUNDLE) "$(NOTARY_PROFILE)"
 	@cd $(DIST_DIR) && /usr/bin/ditto -c -k --keepParent $(APP_NAME).app $(NAME)-$(VERSION)-darwin-arm64.zip
 	@ls -la $(DIST_DIR)/$(NAME)-$(VERSION)-darwin-arm64.zip
@@ -76,7 +84,12 @@ verify-release:
 			echo "verify-release: FAIL — linked SDK is $$sdk, expected $(MACOS_SDK)."; \
 			echo "  macOS draws an app linked against an old SDK with the previous window chrome."; \
 			exit 1; }
-	@echo "verify-release: OK ($(VERSION) — marker present, ticket stapled, linked against SDK $(MACOS_SDK))"
+	@traced=$$(nm "$(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)" | grep -ci trace); \
+		test "$$traced" = "0" || { \
+			echo "verify-release: FAIL — the binary has $$traced symbols of the diagnostic recorder (built with -DTRACE)."; \
+			echo "  'strings' cannot show this: short Swift string literals are stored inline. Rebuild without SWIFT_FLAGS."; \
+			exit 1; }
+	@echo "verify-release: OK ($(VERSION) — marker present, ticket stapled, linked against SDK $(MACOS_SDK), no diagnostic recorder)"
 
 ## test: unit tests, then the checks that keep the documents trustworthy
 test:
