@@ -5,7 +5,14 @@ import SwiftUI
 /// The panel behind the menu bar item. Its width is the popover's to decide and
 /// is fixed; its height is whatever the content needs and is never fixed.
 public struct PanelView: View {
-    public static let width: CGFloat = 300
+    /// Wide enough for an IPv6 address that has no run of zeros to compress — 39
+    /// characters — on one line in `addressFontSize` monospaced, with room to
+    /// spare. A test measures it.
+    public static let width: CGFloat = 320
+    public static let padding: CGFloat = 14
+    public static let addressFontSize: CGFloat = 11
+    /// More than this many addresses are summarised as "+N more".
+    public static let addressLimit = 4
 
     @ObservedObject var model: PanelModel
 
@@ -22,13 +29,14 @@ public struct PanelView: View {
             header
             current
             chart
+            addresses
             details
             Divider()
             settings
             Divider()
             footer
         }
-        .padding(14)
+        .padding(Self.padding)
         .frame(width: Self.width)
     }
 
@@ -116,22 +124,31 @@ public struct PanelView: View {
         .opacity(snapshot.reading == .absent ? 0.35 : 1)
     }
 
+    /// Addresses get the panel's full width, not a cell of the table below: next
+    /// to the label column an IPv6 address had 158 pt and needs up to 265.
+    private var addresses: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            label(UIStrings.address)
+            // One Text per address: a joined string was laid out as a single
+            // truncated line.
+            ForEach(snapshot.addresses.isEmpty ? [UIStrings.none] : Array(snapshot.addresses.prefix(Self.addressLimit)), id: \.self) {
+                Text($0)
+                    .font(.system(size: Self.addressFontSize, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+            }
+            if snapshot.addresses.count > Self.addressLimit {
+                Text(UIStrings.moreAddresses(snapshot.addresses.count - Self.addressLimit))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var details: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 4) {
-            GridRow {
-                label(UIStrings.address)
-                // One Text per address: a joined string was laid out as a single
-                // truncated line.
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(snapshot.addresses.isEmpty ? [UIStrings.none] : Array(snapshot.addresses.prefix(3)), id: \.self) {
-                        Text($0)
-                            .font(.callout.monospacedDigit())
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-                    }
-                }
-            }
             GridRow {
                 label(UIStrings.linkSpeed)
                 Text(snapshot.linkSpeed).font(.callout.monospacedDigit())

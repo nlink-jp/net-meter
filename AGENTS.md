@@ -332,6 +332,11 @@ building the thing it is about.
   and starts fresh when the displayed interface changes.
 - **Converting an unbounded `Double` to `Int` traps.** Compare or clamp as a
   `Double` first. No real rate gets there; a test with an absurd input does.
+- **Size a field for the longest real value, measured — not for the sample data.**
+  The panel was laid out with `2001:db8::10` in a table cell 158 pt wide; a real
+  IPv6 address needs up to 265 pt and was cut in the middle. Addresses now get
+  the panel's full width in a monospaced font, and a test measures the 39-character
+  worst case against the width. The previews and tests use that address too.
 - **Re-anchor the popover when the item's width changes.** Display mode is changed
   from inside the panel, which resizes the very item the panel points at.
 - **Single instance covers the bundle, not the bare binary.**

@@ -10,7 +10,7 @@ import XCTest
 final class PanelViewTests: XCTestCase {
     static func snapshot(reading: MeterReading = .rate(down: 244_000, up: 2_400_000),
                          heading: String = "Ethernet (en0)",
-                         addresses: [String] = ["192.0.2.10", "2001:db8::10"],
+                         addresses: [String] = ["192.0.2.10", PanelViewTests.worstCaseIPv6],
                          loginItem: LoginItemState = .off) -> PanelSnapshot {
         let points = (0..<170).map { index -> ChartPoint in
             let phase = Double(index) / 9
@@ -28,6 +28,9 @@ final class PanelViewTests: XCTestCase {
         )
     }
 
+    /// No run of zeros to compress: 39 characters, as long as an IPv6 address gets.
+    static let worstCaseIPv6 = "fd12:3456:789a:bcde:f012:3456:789a:bcde"
+
     static func host(_ snapshot: PanelSnapshot) -> NSHostingView<PanelView> {
         let view = NSHostingView(rootView: PanelView(model: PanelModel(snapshot: snapshot)))
         view.frame = NSRect(origin: .zero, size: view.fittingSize)
@@ -40,6 +43,20 @@ final class PanelViewTests: XCTestCase {
         XCTAssertEqual(size.width, PanelView.width)
         XCTAssertGreaterThan(size.height, 300)
         XCTAssertLessThan(size.height, 620, "taller than a small display can show below the menu bar")
+    }
+
+    func testTheLongestIPv6AddressFitsOnOneLine() {
+        XCTAssertEqual(Self.worstCaseIPv6.count, 39)
+        let font = NSFont.monospacedSystemFont(ofSize: PanelView.addressFontSize, weight: .regular)
+        let needed = NSAttributedString(string: Self.worstCaseIPv6, attributes: [.font: font]).size().width
+        let available = PanelView.width - PanelView.padding * 2
+        XCTAssertLessThanOrEqual(needed + 10, available, "needs \(needed) pt of \(available) pt; an address must not be cut in the middle")
+    }
+
+    func testMoreAddressesThanTheLimitAreSummarisedNotStackedWithoutEnd() {
+        let few = Self.host(Self.snapshot(addresses: Array(repeating: "", count: 0) + (1...PanelView.addressLimit).map { "192.0.2.\($0)" }))
+        let many = Self.host(Self.snapshot(addresses: (1...12).map { "192.0.2.\($0)" }))
+        XCTAssertLessThan(many.fittingSize.height - few.fittingSize.height, 24, "one '+N more' line, not eight more rows")
     }
 
     func testALongInterfaceNameDoesNotWidenThePanel() {

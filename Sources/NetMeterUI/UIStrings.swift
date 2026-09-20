@@ -33,6 +33,7 @@ public enum UIStrings {
     // The panel
     public static let manual = "Manual"
     public static let address = "Address"
+    public static func moreAddresses(_ count: Int) -> String { "+\(count) more" }
     public static let linkSpeed = "Link speed"
     public static let peak = "Peak, last 3 min"
     public static let total = "Total since launch"
