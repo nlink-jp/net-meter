@@ -246,8 +246,12 @@ building the thing it is about.
   item closed the open panel and that click's action, 27 ms later, was dropped as
   designed (one of one); another app coming to the front closed it (one of one);
   Esc closed it (two of two, read from a close with no mouse-down before it).
-  **Not measured:** a Space change, copying from the context menu, and anything at
-  all on macOS 26 — the VM has no way to click. `PanelWindowTests`
+  On macOS 26 (the minimum), the user went through the app by hand on the VM
+  after the v0.1.1 release and reported no problem; no trace was taken there, so
+  which way macOS 26 delivers a click on the item — to the global monitor first,
+  as on macOS 27, or to the action alone — is still not known. `PanelToggle`
+  handles both. **Not measured:** a Space change and copying from the context
+  menu. `PanelWindowTests`
   pins the style bit and scans the sources: `.activate(`, `yieldActivation` and
   `NSPopover(` fail the build's tests. (KB: "メニューバー用 NSPanel の罠 2 件")
 - **`NSApp.isActive` reads true while the non-activating panel is key** — with no
