@@ -24,8 +24,9 @@ Semantic Versioning.
   selectable, at the bottom. Its content exists only while it is open. Outside
   clicks close it even where macOS's own transient behaviour misses them; clicking
   the item again closes it and clicking once more opens it, however fast the
-  clicks come; and a failed attempt to change launch at login is reported where
-  the toggle is.
+  clicks come; its pop-up menus open and stay open on the very first click, and
+  what is chosen in them takes effect; and a failed attempt to change launch at
+  login is reported where the toggle is.
 - Interface selection: automatic — the first physical link in macOS's preference
   order, which keeps showing the link itself while a VPN is up (measured with a
   split tunnel) — or any interface by hand. A manual choice that is absent is

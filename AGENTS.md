@@ -70,6 +70,7 @@ Sources/
     Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate),
                            GraphWindow: the last 14 samples, one bar each — no time buckets
     GraphScale.swift       Shared up/down full scale with a floor; eased(previous:target:) — up at once, down by 20% a sample
+    PanelUpdateGate.swift  Holds panel refreshes while one of the panel's menus is tracking; one is delivered after
     Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
                            PopoverClick.closesPanel, PanelToggle (one click, two handlers, matched by order)
     StatusItemHit.swift    statusItemOwns(location, itemWindowFrame:) — the measured region, top-left ownership
@@ -254,7 +255,32 @@ building the thing it is about.
   apart: 57 of 57 transitions alternated.
   **Do not reintroduce a time window, the animation, or a decision on `isShown`
   alone** — each is this defect again under a different load.
-- **Reading a click trace: one click is one event number.** `swift build
+- **A panel with controls activates the app when it opens.** `makeKey()` makes the
+  popover key but leaves the app inactive, so the *first* click inside it
+  activated the app — and that activation arrived while the pop-up menu the click
+  had just opened was tracking, and ended the menu 78 ms after it began
+  (measured; reported as "the first click on the unit box behaves erratically").
+  `NSApp.activate` right after `show` gets it done 12–39 ms after the panel
+  appears, before anyone can click. The app that was frontmost is remembered, and
+  when the panel closes while net-meter is still active, activation is handed
+  back (`yieldActivation(to:)` + `activate()`); otherwise an accessory app with no
+  window keeps the keyboard and the user's typing goes nowhere.
+- **The panel is not refreshed while one of its menus is open.** The per-second
+  refresh made SwiftUI re-sync the pop-up button to the current value, and the
+  item then picked was reported as that old value: the setter received the old
+  unit every time a refresh fell inside the tracking (three of three). Refreshes
+  are held by `PanelUpdateGate` from `NSMenu.didBeginTracking` to
+  `didEndTracking` and one is delivered afterwards — on the next run loop turn,
+  after the control's own action. Measured after the fix: seven selections of a
+  different value, seven applied; shortest menu 909 ms; nine opens, nine
+  activations. The menu bar item itself is never held back.
+- **Reading a click trace: one click is one event number — and a selection
+  arrives before its menu ends.** The binding's setter runs about 190 ms *before*
+  `didEndTracking` is posted. A script that looked for the settings change after
+  "MENU end" called five good selections lost. That was the second time in one
+  day a working fix was declared broken by the analysis rather than by the app:
+  when a trace and the person who used the app disagree, read the raw lines
+  before believing the script. `swift build
   -Xswiftc -DTRACE --scratch-path .build/trace` compiles in a recorder
   (`NET_METER_TRACE=<file>`) of every mouse-down, mouse-up and action; it is never
   part of a release build. Its own global monitor runs *after* the app's, so its

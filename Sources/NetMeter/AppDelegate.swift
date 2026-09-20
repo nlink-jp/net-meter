@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var clickMonitors: [Any] = []
     /// One click on the status item reaches two handlers; see PanelToggle.
     private var panelToggle = PanelToggle()
+    /// Refreshes wait while one of the panel's menus is open; see PanelUpdateGate.
+    private var updateGate = PanelUpdateGate()
+    /// Whoever was frontmost before the panel took activation, to hand it back.
+    private var previousApp: NSRunningApplication?
     /// Why launch at login could not be changed; shown until the next attempt or
     /// until the panel closes.
     private var loginItemError: String?
@@ -68,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // true for about 540 ms after a close was requested (measured), and a
         // click in that window was read as "close" when the user meant "open".
         popover.animates = false
+
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(menuDidBeginTracking), name: NSMenu.didBeginTrackingNotification, object: nil)
+        center.addObserver(self, selector: #selector(menuDidEndTracking), name: NSMenu.didEndTrackingNotification, object: nil)
 
         pathMonitor.start { [weak self] _ in
             Task { @MainActor in self?.controller?.refresh() }
@@ -110,10 +118,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.setAccessibilityValue(UIStrings.spoken(content.reading, unit: content.unit))
 
         // The panel is only kept up to date while it is open.
-        panelModel?.snapshot = snapshot()
+        #if TRACE
+        if panelModel != nil { Trace.log("PUSH    unit=\(controller.settings.unit) mode=\(controller.settings.displayMode) held=\(updateGate.trackingDepth > 0)") }
+        #endif
+        pushPanelUpdate()
     }
 
     // MARK: the panel
+
+    private func pushPanelUpdate() {
+        guard let panelModel, updateGate.shouldDeliverUpdate() else { return }
+        panelModel.snapshot = snapshot()
+    }
+
+    @objc private func menuDidBeginTracking() {
+        guard popover.isShown else { return }
+        updateGate.menuDidBeginTracking()
+    }
+
+    @objc private func menuDidEndTracking() {
+        guard popover.isShown, updateGate.menuDidEndTracking() else { return }
+        // Not here and now: the pop-up button sends its action after this
+        // notification, and the refresh must not get in before the selection.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.popover.isShown else { return }
+            self.pushPanelUpdate()
+        }
+    }
 
     private func snapshot() -> PanelSnapshot {
         guard let controller else { fatalError("the controller exists before anything asks for a snapshot") }
@@ -151,9 +182,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Built on open and released on close: a SwiftUI tree that exists while
         // hidden keeps laying out.
         let model = PanelModel(snapshot: snapshot())
-        model.changeSettings = { [weak self] in self?.controller?.settings = $0 }
+        model.changeSettings = { [weak self] in
+            #if TRACE
+            Trace.log("SETTINGS unit=\($0.unit) mode=\($0.displayMode) selection=\($0.selection) coloured=\($0.coloured)")
+            #endif
+            self?.controller?.settings = $0
+        }
         model.setLoginItem = { [weak self] on in
             guard let self else { return }
+            #if TRACE
+            Trace.log("LOGINITEM set=\(on)")
+            #endif
             do {
                 try self.loginItem.set(on)
                 self.loginItemError = nil
@@ -175,7 +214,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // dimmed. Taking key status brightens it. This is about drawing only; it
         // is not why the click monitors exist.
         hosting.view.window?.makeKey()
+        // The panel has controls, so the app is activated now rather than by the
+        // first click inside it: that click's activation arrived while the pop-up
+        // menu it had just opened was tracking, and ended the menu 78 ms after it
+        // began (measured). `makeKey()` alone does not activate the app.
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        if frontmost?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApp = frontmost
+        }
+        NSApp.activate(ignoringOtherApps: true)
         syncClickMonitors()
+        #if TRACE
+        Trace.log("SHOW    active=\(NSApp.isActive) key=\(hosting.view.window?.isKeyWindow ?? false)")
+        #endif
     }
 
     /// `.transient` closes the panel only when the outside click lands in a window
@@ -194,8 +245,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 MainActor.assumeIsolated { self?.globalMouseDown(at: location) }
             }
             let local = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
-                let window = event.window
-                MainActor.assumeIsolated { self?.localMouseDown(in: window) }
+                let window = event.window, location = event.locationInWindow
+                MainActor.assumeIsolated { self?.localMouseDown(in: window, at: location) }
                 return event
             }
             clickMonitors = [global, local].compactMap { $0 }
@@ -220,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// A mouse-down inside the app.
-    private func localMouseDown(in window: NSWindow?) {
+    private func localMouseDown(in window: NSWindow?, at location: NSPoint) {
         let click: PopoverClick
         if window === statusItem?.button?.window {
             click = .statusButton
@@ -232,7 +283,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             click = .elsewhere
         }
         #if TRACE
-        Trace.log("LMON    click=\(click) shown=\(popover.isShown)")
+        let hit = window?.contentView?.superview?.hitTest(location) ?? window?.contentView?.hitTest(location)
+        Trace.log("LMON    click=\(click) key=\(window?.isKeyWindow ?? false) active=\(NSApp.isActive) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil") at=(\(Int(location.x)),\(Int(location.y))) window=\(window.map { String(describing: type(of: $0)) } ?? "nil")")
         #endif
         if click.closesPanel, popover.isShown { closePanel() }
     }
@@ -244,6 +296,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = nil
         panelModel = nil
         loginItemError = nil
+        updateGate.reset()
+        // An accessory app that stays active with no window leaves the user's
+        // keystrokes going nowhere. If closing the panel did not activate
+        // something else, hand activation back to whoever had it.
+        if NSApp.isActive, let previousApp, !previousApp.isTerminated {
+            NSApp.yieldActivation(to: previousApp)
+            previousApp.activate()
+        }
+        previousApp = nil
         // Also reached when `.transient` closed the panel on its own.
         syncClickMonitors()
     }
@@ -258,12 +319,26 @@ enum Trace {
     private static var handle: FileHandle?
     private static let start = ContinuousClock().now
     private static var monitors: [Any] = []
+    private static var observers: [Any] = []
 
     static func install(_ delegate: AppDelegate) {
         let path = ProcessInfo.processInfo.environment["NET_METER_TRACE"] ?? "/tmp/net-meter-trace.log"
         FileManager.default.createFile(atPath: path, contents: nil)
         handle = FileHandle(forWritingAtPath: path)
         log("START pid=\(ProcessInfo.processInfo.processIdentifier)")
+        let center = NotificationCenter.default
+        for (name, label) in [(NSMenu.didBeginTrackingNotification, "MENU    begin"), (NSMenu.didEndTrackingNotification, "MENU    end"),
+                              (NSApplication.didBecomeActiveNotification, "APP     active"), (NSApplication.didResignActiveNotification, "APP     inactive"),
+                              (NSWindow.didBecomeKeyNotification, "WINDOW  key"), (NSWindow.didResignKeyNotification, "WINDOW  resign-key")] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { note in
+                var detail = (note.object as? NSWindow).map { " \(type(of: $0))" } ?? ""
+                if let menu = note.object as? NSMenu {
+                    let items = menu.items.map { ($0.state == .on ? "*" : "") + $0.title }.joined(separator: "|")
+                    detail += " highlighted=\(menu.highlightedItem?.title ?? "nil") items=[\(items)]"
+                }
+                MainActor.assumeIsolated { log(label + detail) }
+            })
+        }
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp]
         let global = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak delegate] event in
             let location = event.locationInWindow, type = event.type.rawValue, number = event.eventNumber
