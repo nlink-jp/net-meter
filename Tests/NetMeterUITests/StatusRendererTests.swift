@@ -177,7 +177,7 @@ final class StatusRendererTests: XCTestCase {
             // The stem alone is 2 x 4 fully opaque pixels; the head's sloping edges are antialiased.
             XCTAssertGreaterThanOrEqual(solid.count, 12, "a two-point stem plus the core of the head")
             XCTAssertGreaterThanOrEqual(Set(solid.map(\.y)).count, 5, "solid over most of its height")
-            XCTAssertEqual(Set(pixels.ink(x: arrowX, y: row).map(\.y)).count, 8, "eight points tall")
+            XCTAssertEqual(Set(pixels.ink(x: arrowX, y: row).map(\.y)).count, 7, "as tall as the digits beside it")
         }
     }
 

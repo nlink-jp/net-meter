@@ -149,32 +149,48 @@ public enum StatusRenderer {
 
     private static func draw(_ text: String, colour: NSColor, leftAt x: CGFloat, rowBottom: CGFloat) {
         let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: colour])
-        let lineHeight = string.size().height
-        string.draw(at: NSPoint(x: x, y: rowBottom + ((height / 2 - lineHeight) / 2).rounded()))
+        string.draw(at: NSPoint(x: x, y: textOrigin(rowBottom: rowBottom)))
+    }
+
+    /// Where a row's text is drawn from, and the band its digits occupy. Everything
+    /// in a row is placed from these, so the arrow and the digits share one centre
+    /// by construction instead of by two sets of constants that happen to agree.
+    static func textOrigin(rowBottom: CGFloat) -> CGFloat {
+        let lineHeight = NSAttributedString(string: "0", attributes: [.font: font]).size().height
+        return rowBottom + ((height / 2 - lineHeight) / 2).rounded()
+    }
+
+    /// The digits' band: from the baseline up by the cap height, on whole points.
+    static func digitBand(rowBottom: CGFloat) -> (bottom: CGFloat, top: CGFloat) {
+        let baseline = (textOrigin(rowBottom: rowBottom) - font.descender).rounded()
+        return (baseline, baseline + font.capHeight.rounded(.up))
     }
 
     /// A filled arrow — a triangular head on a two-point stem — rather than the
-    /// font's glyph, which is a hairline at 9 pt. Every coordinate is a whole
-    /// point, so the stem is crisp at 1x.
+    /// font's glyph, which is a hairline at 9 pt. It spans exactly the digits'
+    /// band. Every coordinate is a whole point, so the stem is crisp at 1x and the
+    /// head's edges are clean 45-degree steps.
     private static func drawArrow(up: Bool, colour: NSColor, leftAt x: CGFloat, rowBottom: CGFloat) {
-        let centre = x + 3, bottom = rowBottom + 2, top = rowBottom + 10
+        let band = digitBand(rowBottom: rowBottom)
+        let centre = x + 3, bottom = band.bottom, top = band.top
+        let head: CGFloat = 3
         let path = NSBezierPath()
         if up {
             path.move(to: NSPoint(x: centre, y: top))
-            path.line(to: NSPoint(x: centre + 3, y: top - 4))
-            path.line(to: NSPoint(x: centre + 1, y: top - 4))
+            path.line(to: NSPoint(x: centre + head, y: top - head))
+            path.line(to: NSPoint(x: centre + 1, y: top - head))
             path.line(to: NSPoint(x: centre + 1, y: bottom))
             path.line(to: NSPoint(x: centre - 1, y: bottom))
-            path.line(to: NSPoint(x: centre - 1, y: top - 4))
-            path.line(to: NSPoint(x: centre - 3, y: top - 4))
+            path.line(to: NSPoint(x: centre - 1, y: top - head))
+            path.line(to: NSPoint(x: centre - head, y: top - head))
         } else {
             path.move(to: NSPoint(x: centre, y: bottom))
-            path.line(to: NSPoint(x: centre + 3, y: bottom + 4))
-            path.line(to: NSPoint(x: centre + 1, y: bottom + 4))
+            path.line(to: NSPoint(x: centre + head, y: bottom + head))
+            path.line(to: NSPoint(x: centre + 1, y: bottom + head))
             path.line(to: NSPoint(x: centre + 1, y: top))
             path.line(to: NSPoint(x: centre - 1, y: top))
-            path.line(to: NSPoint(x: centre - 1, y: bottom + 4))
-            path.line(to: NSPoint(x: centre - 3, y: bottom + 4))
+            path.line(to: NSPoint(x: centre - 1, y: bottom + head))
+            path.line(to: NSPoint(x: centre - head, y: bottom + head))
         }
         path.close()
         colour.setFill()

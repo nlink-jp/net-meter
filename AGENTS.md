@@ -348,6 +348,14 @@ building the thing it is about.
   and starts fresh when the displayed interface changes.
 - **Converting an unbounded `Double` to `Int` traps.** Compare or clamp as a
   `Double` first. No real rate gets there; a test with an absurd input does.
+- **Things that must look aligned are placed from one source, and the alignment
+  is measured in ink.** The arrows had their own constants ("two to ten points
+  above the row's bottom") while the digits sat where the font put them: the
+  upstream arrow happened to match, the downstream one was a whole pixel high at
+  1x — reported by eye, confirmed as +1.00 pt by comparing the vertical middle of
+  each one's ink. Arrows now span the digits' band, derived from the font's
+  baseline and cap height; `StatusAlignmentTests` holds both rows within half a
+  point at 1x and 2x.
 - **Size a field for the longest real value, measured — not for the sample data.**
   The panel was laid out with `2001:db8::10` in a table cell 158 pt wide; a real
   IPv6 address needs up to 265 pt and was cut in the middle. Addresses now get
