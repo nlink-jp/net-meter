@@ -44,6 +44,12 @@ final class StatusRendererTests: XCTestCase {
         return (right - StatusRenderer.graphWidth)...right
     }
 
+    /// The x range of bar `fromRight` (0 = newest) in points.
+    private func barX(_ fromRight: Int) -> ClosedRange<CGFloat> {
+        let left = graphX().lowerBound + StatusRenderer.barOffset(GraphWindow.columns - 1 - fromRight)
+        return left...(left + StatusRenderer.barWidth)
+    }
+
     private let centre = StatusRenderer.height / 2
     private let everyHeight: ClosedRange<CGFloat> = 0...StatusRenderer.height
 
@@ -129,16 +135,40 @@ final class StatusRendererTests: XCTestCase {
         // One busy column sets the scale; the trickle next to it must not vanish.
         let columns = [GraphColumn(down: 1, up: 0), GraphColumn(down: 0, up: 900_000_000)]
         let pixels = render(.rate(down: 1, up: 1), columns: columns, scale: 1)
-        let trickleColumn = (graphX().upperBound - 2)...(graphX().upperBound - 1)
-        XCTAssertFalse(pixels.ink(x: trickleColumn, y: 0...(centre - 1)).isEmpty)
+        XCTAssertFalse(pixels.ink(x: barX(1), y: 0...(centre - 1)).isEmpty)
     }
 
     func testAColumnWithoutAValueIsAGapNotAZero() {
         let columns: [GraphColumn?] = [GraphColumn(down: 80_000, up: 80_000), nil, GraphColumn(down: 80_000, up: 80_000)]
         let pixels = render(.rate(down: 1, up: 1), columns: columns, scale: 1)
-        let gap = (graphX().upperBound - 2)...(graphX().upperBound - 1)
-        let rows = Set(pixels.ink(x: gap, y: everyHeight).map(\.y))
+        let rows = Set(pixels.ink(x: barX(1), y: everyHeight).map(\.y))
         XCTAssertEqual(rows.count, 1, "only the centre line crosses a gap; got rows \(rows.sorted())")
+    }
+
+    func testBarsAreWholePixelsWideWithAGapBetweenThem() {
+        let columns = [GraphColumn(down: 0, up: 80_000), GraphColumn(down: 0, up: 80_000)]
+        for scale in [CGFloat(1), 2] {
+            let pixels = render(.rate(down: 1, up: 1), columns: columns, scale: scale)
+            let above = (centre + 1)...StatusRenderer.height
+            let inked = Set(pixels.ink(x: graphX(), y: above).map(\.x)).sorted()
+            XCTAssertEqual(inked.count, Int(StatusRenderer.barWidth * scale) * 2, "two bars at \(scale)x: \(inked)")
+            let between = barX(1).upperBound...barX(0).lowerBound
+            XCTAssertTrue(pixels.ink(x: between, y: above).isEmpty, "the gap between bars is empty at \(scale)x")
+            XCTAssertTrue(pixels.ink(x: graphX(), y: above).allSatisfy { $0.a == 255 }, "no blurred edges at \(scale)x")
+        }
+    }
+
+    func testArrowsAreSolidNotHairlines() {
+        // A filled arrow has a stem two points wide: fully opaque pixels, which a 9 pt glyph never produced.
+        let pixels = render(.rate(down: 1, up: 1), mode: .numbersOnly, scale: 1)
+        let arrowX = StatusRenderer.padding...(StatusRenderer.padding + StatusRenderer.arrowWidth)
+        for row in [0...(centre - 1), (centre + 1)...StatusRenderer.height] {
+            let solid = pixels.ink(x: arrowX, y: row).filter { $0.a == 255 }
+            // The stem alone is 2 x 4 fully opaque pixels; the head's sloping edges are antialiased.
+            XCTAssertGreaterThanOrEqual(solid.count, 12, "a two-point stem plus the core of the head")
+            XCTAssertGreaterThanOrEqual(Set(solid.map(\.y)).count, 5, "solid over most of its height")
+            XCTAssertEqual(Set(pixels.ink(x: arrowX, y: row).map(\.y)).count, 8, "eight points tall")
+        }
     }
 
     // MARK: states without a value

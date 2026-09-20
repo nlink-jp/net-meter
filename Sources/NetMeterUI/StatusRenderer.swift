@@ -36,7 +36,11 @@ public enum StatusRenderer {
     static let arrowWidth: CGFloat = 8
     static let numberUnitGap: CGFloat = 2
     static let textGraphGap: CGFloat = 4
-    static let graphWidth = CGFloat(GraphWindow.columns)
+    /// Bars of `barWidth` with `barGap` between them; whole points, so a bar is
+    /// whole pixels at any scale.
+    static let barWidth: CGFloat = 2
+    static let barGap: CGFloat = 1
+    static let graphWidth = CGFloat(GraphWindow.columns) * (barWidth + barGap) - barGap
     /// Room a bar has on either side of the centre line.
     static let maximumBar: CGFloat = 8
     static let absentDimming: CGFloat = 0.35
@@ -119,7 +123,7 @@ public enum StatusRenderer {
         }
         let numberRight = x + arrowWidth + numberFieldWidth()
         for row in rows {
-            draw(row.arrow, colour: row.colour, leftAt: x, rowBottom: row.bottom)
+            drawArrow(up: row.arrow == "↑", colour: row.colour, leftAt: x, rowBottom: row.bottom)
             if let value = row.value {
                 let formatted = RateFormatter.format(bytesPerSecond: value, unit: content.unit)
                 draw(formatted.number, colour: palette.foreground, rightAt: numberRight, rowBottom: row.bottom)
@@ -137,6 +141,34 @@ public enum StatusRenderer {
         string.draw(at: NSPoint(x: x, y: rowBottom + ((height / 2 - lineHeight) / 2).rounded()))
     }
 
+    /// A filled arrow — a triangular head on a two-point stem — rather than the
+    /// font's glyph, which is a hairline at 9 pt. Every coordinate is a whole
+    /// point, so the stem is crisp at 1x.
+    private static func drawArrow(up: Bool, colour: NSColor, leftAt x: CGFloat, rowBottom: CGFloat) {
+        let centre = x + 3, bottom = rowBottom + 2, top = rowBottom + 10
+        let path = NSBezierPath()
+        if up {
+            path.move(to: NSPoint(x: centre, y: top))
+            path.line(to: NSPoint(x: centre + 3, y: top - 4))
+            path.line(to: NSPoint(x: centre + 1, y: top - 4))
+            path.line(to: NSPoint(x: centre + 1, y: bottom))
+            path.line(to: NSPoint(x: centre - 1, y: bottom))
+            path.line(to: NSPoint(x: centre - 1, y: top - 4))
+            path.line(to: NSPoint(x: centre - 3, y: top - 4))
+        } else {
+            path.move(to: NSPoint(x: centre, y: bottom))
+            path.line(to: NSPoint(x: centre + 3, y: bottom + 4))
+            path.line(to: NSPoint(x: centre + 1, y: bottom + 4))
+            path.line(to: NSPoint(x: centre + 1, y: top))
+            path.line(to: NSPoint(x: centre - 1, y: top))
+            path.line(to: NSPoint(x: centre - 1, y: bottom + 4))
+            path.line(to: NSPoint(x: centre - 3, y: bottom + 4))
+        }
+        path.close()
+        colour.setFill()
+        path.fill()
+    }
+
     private static func draw(_ text: String, colour: NSColor, rightAt x: CGFloat, rowBottom: CGFloat) {
         draw(text, colour: colour, leftAt: x - width(of: text), rowBottom: rowBottom)
     }
@@ -150,7 +182,6 @@ public enum StatusRenderer {
 
         guard content.reading != .absent else { return }
         let fullScale = GraphWindow.fullScale(of: content.columns)
-        let columnWidth = graphWidth / CGFloat(max(content.columns.count, 1))
 
         func barHeight(_ value: Double) -> CGFloat {
             guard value > 0 else { return 0 }
@@ -161,17 +192,22 @@ public enum StatusRenderer {
 
         for (index, column) in content.columns.enumerated() {
             guard let column else { continue }
-            let left = x + CGFloat(index) * columnWidth
+            let left = x + barOffset(index)
             let up = barHeight(column.up), down = barHeight(column.down)
             if up > 0 {
                 palette.up.setFill()
-                NSRect(x: left, y: centre, width: columnWidth, height: up).fill()
+                NSRect(x: left, y: centre, width: barWidth, height: up).fill()
             }
             if down > 0 {
                 palette.down.setFill()
-                NSRect(x: left, y: centre - pixel - down, width: columnWidth, height: down).fill()
+                NSRect(x: left, y: centre - pixel - down, width: barWidth, height: down).fill()
             }
         }
+    }
+
+    /// Where bar `index` starts, from the graph's left edge.
+    static func barOffset(_ index: Int) -> CGFloat {
+        CGFloat(index) * (barWidth + barGap)
     }
 
     /// The colours of one finish. In the template finish everything is black and

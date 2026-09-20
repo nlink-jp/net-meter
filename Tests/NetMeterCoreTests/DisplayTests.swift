@@ -76,8 +76,15 @@ final class DisplayTests: XCTestCase {
             HistoryPoint(time: 98, rate: nil),
             HistoryPoint(time: 100, rate: rate(2, 2)),
         ]
-        let columns = GraphWindow.columns(from: history, now: 100, count: 3)
+        let columns = GraphWindow.columns(from: history, now: 100, count: 3, secondsPerColumn: 2)
         XCTAssertEqual(columns, [GraphColumn(down: 1, up: 1), nil, GraphColumn(down: 2, up: 2)])
+    }
+
+    func testTheWindowIsAboutAMinute() {
+        XCTAssertEqual(Double(GraphWindow.columns) * GraphWindow.secondsPerColumn, 60)
+        let edge = HistoryPoint(time: 40.5, rate: rate(3, 3)), outside = HistoryPoint(time: 39.5, rate: rate(9, 9))
+        let columns = GraphWindow.columns(from: [outside, edge], now: 100)
+        XCTAssertEqual(columns.first!, GraphColumn(down: 3, up: 3))
     }
 
     func testSamplesOlderThanTheWindowOrFromTheFutureAreIgnored() {

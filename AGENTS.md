@@ -64,7 +64,8 @@ Sources/
     RingBuffer.swift       Fixed-capacity history storage
     GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
-    Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate), GraphWindow columns
+    Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate),
+                           GraphWindow: 12 columns x 5 s, the highest rate in each bucket
     InterfaceCatalog.swift "Ethernet (en0)" labels and the manual selection list (hardware ports first; an absent choice stays listed)
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
   NetMeterSystem/        The thin layer that asks the OS. No logic worth a unit test lives here

@@ -18,11 +18,10 @@ final class StatusPreviewTests: XCTestCase {
             throw XCTSkip("set NET_METER_PREVIEW_DIR to write the preview sheet")
         }
         var columns: [GraphColumn?] = (0..<GraphWindow.columns).map { index in
-            let phase = Double(index) / 4
+            let phase = Double(index) / 2
             return GraphColumn(down: 300_000 * abs(sin(phase)) + 20_000, up: 2_400_000 * abs(cos(phase * 0.7)))
         }
-        columns[11] = nil
-        columns[12] = nil
+        columns[GraphWindow.columns / 3] = nil
 
         let readings: [(String, MeterReading)] = [
             ("rate", .rate(down: 244_000, up: 2_400_000)),

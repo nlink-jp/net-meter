@@ -72,9 +72,10 @@ public struct GraphColumn: Equatable, Sendable {
 }
 
 public enum GraphWindow {
-    /// 30 columns of 2 seconds: the "about 60 seconds" of the RFP in 30 points of width.
-    public static let columns = 30
-    public static let secondsPerColumn = 2.0
+    /// 12 columns of 5 seconds: the "about 60 seconds" of the RFP, in bars wide
+    /// enough to read at a glance on a 1x display.
+    public static let columns = 12
+    public static let secondsPerColumn = 5.0
 
     /// Buckets a history into columns, oldest first, the newest column ending at
     /// `now`. A column takes the highest rate in its bucket — a one-second burst

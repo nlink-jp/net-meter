@@ -34,8 +34,9 @@ Semantic Versioning.
   graph; settings for the interface, the display mode, the unit and colour,
   saved in UserDefaults and applied at once. About 0.3% CPU
   while resident (measured on an M-series Mac over 30 seconds).
-- The menu bar image (ADR-0002): two lines of numbers and a mirrored graph at a
-  width that depends only on the display mode, monochrome as a template image
+- The menu bar image (ADR-0002): two lines of numbers with solid arrows and a
+  mirrored graph of twelve five-second bars, at a width that depends only on the
+  display mode, monochrome as a template image
   or coloured to suit the menu bar the button reports, pixel-aligned at 1x and
   2x, with "no value" drawn as a dash and "absent" dimmed.
 - Interface labels ("Ethernet (en0)") and the manual selection list: hardware
