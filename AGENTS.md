@@ -246,8 +246,8 @@ building the thing it is about.
   item closed the open panel and that click's action, 27 ms later, was dropped as
   designed (one of one); another app coming to the front closed it (one of one);
   Esc closed it (two of two, read from a close with no mouse-down before it).
-  On macOS 26 (the minimum), the user went through the app by hand on the VM
-  after the v0.1.1 release and reported no problem; no trace was taken there, so
+  On macOS 26 (the minimum), the user went through v0.1.1 by hand on the VM and
+  reported no problem; no trace was taken there, so
   which way macOS 26 delivers a click on the item — to the global monitor first,
   as on macOS 27, or to the action alone — is still not known. `PanelToggle`
   handles both. **Not measured:** a Space change and copying from the context
