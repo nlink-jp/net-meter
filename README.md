@@ -17,6 +17,26 @@ monitor. net-meter does only this.
 > macOS releases are **Developer ID signed and Apple-notarized** (stapled). They
 > launch without Gatekeeper prompts and work offline.
 
+## Using it
+
+The menu bar item shows the upstream rate on the upper line and the downstream
+rate on the lower, with a graph of the last minute beside them: upstream above
+the centre line, downstream below it. A dash means there is no value for this
+second; a dimmed item means the selected interface is not connected. The numbers
+never show another interface in its place.
+
+Click the item for the settings:
+
+| Setting | Choices |
+|---|---|
+| Interface | Automatic — the physical link macOS currently prefers, even while a VPN is up — or any interface by hand |
+| Display | Numbers and graph, numbers only, or graph only. The width changes with this setting and with nothing else |
+| Unit | Bytes per second (KB/s, MB/s) or bits per second (kbps, Mbps) |
+| Colour | Off: the item takes the menu bar's own colour, like the system's items. On: upstream and downstream get their own colours |
+
+Rates below about 1 KB/s alternate between 0 and 1: macOS reports the byte
+counters to an ordinary app in steps of 1 KiB.
+
 ## Build from source
 
 ```bash

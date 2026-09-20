@@ -8,9 +8,11 @@ Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI popover, macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
-**Development Phase 1 in progress.** The app itself is still the scaffold shell: it
-starts, guards against a second instance, and shows a placeholder status item
-whose menu carries the version and Quit. The pure core underneath it is in place
+**Development Phase 2 in progress.** The menu bar item is live: two lines of rates
+and a mirrored graph, redrawn every second, with the settings in a menu. That
+menu is interim — the RFP's panel (history chart, interface details, peaks,
+totals, settings, version) replaces it next, with status-lens as the reference
+for popover dismissal. The pure core underneath is in place
 — the rate rule (ADR-0001), the meter with per-interface history, interface
 resolution and the selection list, rate formatting, graph scaling — and
 `NetMeterSystem` asks the OS: counters through `sysctl`, the preference order,
@@ -51,6 +53,7 @@ Sources/
     SingleInstance.swift   singleInstanceDecision() — startup duplicate guard (pids in, decision out)
     AppVersion.swift       displayVersion(bundleShortVersion:) — what the user is shown, "dev" outside a bundle
     SymbolName.swift       Every SF Symbol name the app may ask for; the only place a name is spelled
+    SettingsStore.swift    SettingsStore protocol + the in-memory store tests use (UserDefaults store: NetMeterSystem)
     CounterReading.swift   InterfaceCounters (bytes, packets, link speed) and the CounterSource protocol
     RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
     Meter.swift            Per-interface baseline, history (nil = no value), totals and peaks; time is passed in, never read
@@ -66,9 +69,11 @@ Sources/
     PathOrderMonitor.swift     NWPathMonitor -> [PathInterface], passed on as given (duplicates and tunnels included)
   NetMeterUI/            Drawing and views, as a library so tests can render it offscreen
     StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish, scale) -> image for button.image; fixed width per mode/unit
+    MeterController.swift  Readings -> what is on display; every OS dependency injected; a setting reaches the display at once
+    UIStrings.swift        Every user-visible string, one language throughout; also the accessibility value of the item
   NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
-    AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
+    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, interim settings menu
 Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
                          ReplayTests is opt-in: NET_METER_REPLAY_LOG=<watch log> replays a recording through the real Meter
 Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
