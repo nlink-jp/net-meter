@@ -71,7 +71,8 @@ Sources/
                            GraphWindow: the last 14 samples, one bar each — no time buckets
     GraphScale.swift       Shared up/down full scale with a floor; eased(previous:target:) — up at once, down by 20% a sample
     Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
-                           PopoverClick.closesPanel, PanelToggle.decide
+                           PopoverClick.closesPanel, PanelToggle (one click, two handlers, matched by order)
+    StatusItemHit.swift    statusItemOwns(location, itemWindowFrame:) — the measured region, top-left ownership
     LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval
     SettingsStore.swift    SettingsStore protocol + the in-memory store tests use
     SymbolName.swift       The one place an SF Symbol name may be spelled (empty: the app draws its own arrows)
@@ -94,7 +95,8 @@ Sources/
   NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, and the popover:
-                           content built on open and released on close, makeKey(), click monitors, re-anchoring
+                           content built on open and released on close, makeKey(), click monitors, re-anchoring;
+                           a click/action recorder under `#if TRACE` only
 Tests/
   NetMeterCoreTests/     Pure. ReplayTests is opt-in
   NetMeterSystemTests/   Live, against this Mac
@@ -234,17 +236,31 @@ building the thing it is about.
   they are measured here rather than copied. (KB: "メニューバーの NSPopover は
   外側クリックのクローズを `.transient` に任せない" and "メニューバーの NSPopover は
   表示直後に makeKey() する")
-- **The global click monitor also receives the click on our own status item, and
-  before the button's action does.** Measured in a sibling app (nvme-lens, macOS
-  27.0): 20–35 ms earlier, when the app is not active. The monitor closes the
-  panel and the action then arrives. With the default close animation `isShown`
-  is still true at that moment, so the action closes again and nothing is
-  visible; with `popover.animates = false` the action finds the panel closed and
-  opens it again — a re-click never closes it. net-meter keeps the default
-  animation but does not rely on it: `PanelToggle.decide` treats an action that
-  follows a monitor close within 0.25 s as the same click. Do not set
-  `animates = false` without reading this, and do not remove the guard because
-  "it works without it".
+- **One click on the status item reaches two handlers, and they are matched by
+  order — never by time, and never by `isShown`.** On macOS 27 another process
+  hosts the menu bar, so a click on our own item reaches the *global* mouse-down
+  monitor first and the button's action 5–30 ms later (when the app is active the
+  action sometimes never comes — measured in nvme-lens, from which `PanelToggle`
+  and `statusItemOwns` are ported). The monitor closes the panel and notes that
+  the click was on the item; the next action is that click's and is dropped; with
+  no action, the note is void at the next mouse-down, so the monitor outlives the
+  panel until then.
+  What was tried first and failed on real hardware: deciding by `isShown` plus a
+  0.25 s window. With the default close animation `isShown` stayed true for
+  534–546 ms after a close was requested (four measurements), so at two clicks a
+  second every other "open" click was read as "close" and nothing opened — which
+  is how it was reported. `popover.animates = false` brings the close down to
+  2–18 ms, and the order-matching toggle survived 58 clicks at a median of 183 ms
+  apart: 57 of 57 transitions alternated.
+  **Do not reintroduce a time window, the animation, or a decision on `isShown`
+  alone** — each is this defect again under a different load.
+- **Reading a click trace: one click is one event number.** `swift build
+  -Xswiftc -DTRACE --scratch-path .build/trace` compiles in a recorder
+  (`NET_METER_TRACE=<file>`) of every mouse-down, mouse-up and action; it is never
+  part of a release build. Its own global monitor runs *after* the app's, so its
+  line for a closing click already says `shown=false`. Read naively, that made a
+  working fix look broken: half the clicks seemed to do nothing. Group lines by
+  event number and judge a click by the state its mouse-up line reports.
 - **Build the popover's content when it opens and release it in
   `popoverDidClose`.** An eagerly created `NSHostingController` kept laying out a
   hidden panel at ~12% CPU in load-spinner. Set

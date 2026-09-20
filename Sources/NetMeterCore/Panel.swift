@@ -88,29 +88,64 @@ public enum PopoverClick: Equatable, Sendable {
     public var closesPanel: Bool { self == .elsewhere }
 }
 
-/// What a click on the status item does.
+/// Arbitrates between the two things that react to one click on the status item.
 ///
-/// On macOS 27 the global mouse-down monitor also receives the click on the app's
-/// own status item, 20–35 ms *before* the button's action runs (measured in a
-/// sibling app). The monitor closes the panel; the action then arrives. With the
-/// default close animation `isShown` is still true at that point and the action
-/// closes again, harmlessly — but that is an accident of timing, and without the
-/// animation the action would find the panel closed and open it again, so a
-/// re-click would never close it. The decision is therefore made explicitly: an
-/// action that follows a monitor close this closely is the same click.
-public enum PanelToggle: Equatable, Sendable {
-    case open
-    case close
-    /// The click that the monitor already acted on.
-    case ignore
+/// On macOS 27 the menu bar is hosted by another process, so a click on the app's
+/// own status item reaches the *global* mouse-down monitor first and the button's
+/// action a few tens of milliseconds later — or, when the app is active, sometimes
+/// never (measured in a sibling app, nvme-lens, from which this type is ported).
+/// Letting both act on the popover closes the panel and opens it again.
+///
+/// The two events cannot be matched by identity — the action runs under a
+/// synthesized event whose number is always 0 — and they must not be matched by
+/// time or by `isShown`. Both were tried here and both failed on real hardware:
+/// with the default close animation `isShown` stayed true for about 540 ms after
+/// the close was requested, so at two clicks a second every other "open" click
+/// was read as "close" and nothing opened. So they are matched by order: the
+/// monitor closes the panel and notes that the click was on the item, and the
+/// next action is that click's and is dropped. If no action comes, the note is
+/// void as soon as another mouse-down is seen — which is why the monitor outlives
+/// the panel until then.
+///
+/// Where a click on the item never reaches a global monitor, the note is never
+/// taken and this is a plain toggle.
+public struct PanelToggle: Equatable, Sendable {
+    /// A mouse-down on the status item closed the panel, and that click's action
+    /// has not arrived yet.
+    public private(set) var awaitingActionOfClosingClick = false
 
-    /// Longer than the measured 20–35 ms by a wide margin, shorter than a person's
-    /// deliberate second click.
-    public static let sameClickWindow = 0.25
+    public enum Effect: Equatable, Sendable {
+        case open
+        case close
+        case none
+    }
 
-    public static func decide(isShown: Bool, secondsSinceMonitorClose: Double?) -> PanelToggle {
-        if isShown { return .close }
-        if let elapsed = secondsSinceMonitorClose, elapsed >= 0, elapsed < sameClickWindow { return .ignore }
-        return .open
+    public init() {}
+
+    /// A mouse-down seen by the global monitor.
+    public mutating func globalMouseDown(panelShown: Bool, onStatusItem: Bool) -> Effect {
+        guard panelShown else {
+            // The monitor is only still here because an action was awaited, and a
+            // new click has begun: that action is not coming any more.
+            awaitingActionOfClosingClick = false
+            return .none
+        }
+        awaitingActionOfClosingClick = onStatusItem
+        return .close
+    }
+
+    /// The status item button's action.
+    public mutating func statusItemAction(panelShown: Bool) -> Effect {
+        if awaitingActionOfClosingClick {
+            awaitingActionOfClosingClick = false
+            return .none
+        }
+        return panelShown ? .close : .open
+    }
+
+    /// The monitor is needed while the panel is shown, and afterwards for as long
+    /// as a closing click's action may still arrive.
+    public func needsMonitor(panelShown: Bool) -> Bool {
+        panelShown || awaitingActionOfClosingClick
     }
 }

@@ -20,11 +20,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var now: () -> Double = { 0 }
 
     private let popover = NSPopover()
+    #if TRACE
+    var traceItemFrame: CGRect? { statusItem?.button?.window?.frame }
+    var tracePanelShown: Bool { popover.isShown }
+    #endif
     /// Exists only while the panel is open.
     private var panelModel: PanelModel?
     private var clickMonitors: [Any] = []
-    /// When a click monitor last closed the panel, on the `now` clock.
-    private var monitorClosedAt: Double?
+    /// One click on the status item reaches two handlers; see PanelToggle.
+    private var panelToggle = PanelToggle()
     /// Why launch at login could not be changed; shown until the next attempt or
     /// until the panel closes.
     private var loginItemError: String?
@@ -60,6 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         popover.behavior = .transient
         popover.delegate = self
+        // Not animated, on purpose: with the default animation `isShown` stayed
+        // true for about 540 ms after a close was requested (measured), and a
+        // click in that window was read as "close" when the user meant "open".
+        popover.animates = false
 
         pathMonitor.start { [weak self] _ in
             Task { @MainActor in self?.controller?.refresh() }
@@ -73,6 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         tick()
+        #if TRACE
+        Trace.install(self)
+        #endif
     }
 
     @objc private func tick() {
@@ -119,18 +130,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func togglePanel() {
-        // The global monitor sees the click on our own status item before this
-        // action does; see PanelToggle.
-        switch PanelToggle.decide(isShown: popover.isShown, secondsSinceMonitorClose: monitorClosedAt.map { now() - $0 }) {
-        case .close:
-            popover.performClose(nil)
-            return
-        case .ignore:
-            monitorClosedAt = nil
-            return
-        case .open:
-            break
+        #if TRACE
+        Trace.log("ACTION  event=\(NSApp.currentEvent.map { "\($0.type.rawValue)#\($0.eventNumber)" } ?? "nil") active=\(NSApp.isActive) shown=\(popover.isShown) awaiting=\(panelToggle.awaitingActionOfClosingClick)")
+        #endif
+        switch panelToggle.statusItemAction(panelShown: popover.isShown) {
+        case .open: showPanel()
+        case .close: closePanel()
+        case .none: syncClickMonitors()
         }
+    }
+
+    private func closePanel() {
+        popover.performClose(nil)
+        syncClickMonitors()
+    }
+
+    private func showPanel() {
         guard let button = statusItem?.button, controller != nil else { return }
 
         // Built on open and released on close: a SwiftUI tree that exists while
@@ -160,59 +175,121 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // dimmed. Taking key status brightens it. This is about drawing only; it
         // is not why the click monitors exist.
         hosting.view.window?.makeKey()
-        installClickMonitors()
+        syncClickMonitors()
     }
 
     /// `.transient` closes the panel only when the outside click lands in a window
     /// that takes activation. A click on an empty stretch of the menu bar, or on
     /// another app's non-activating panel, is missed — so outside clicks are
-    /// watched explicitly for as long as the panel is shown.
-    private func installClickMonitors() {
-        removeClickMonitors()
-        let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
-        let global = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.handleClick(.elsewhere)
+    /// watched explicitly. The monitors live while the panel is shown and, after
+    /// a click on the item closed it, until that click's action has been dealt with.
+    private func syncClickMonitors() {
+        let needed = panelToggle.needsMonitor(panelShown: popover.isShown)
+        if needed, clickMonitors.isEmpty {
+            let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
+            let global = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
+                // A global monitor's location is already in screen coordinates.
+                // The event is not Sendable: read what is needed out here.
+                let location = event.locationInWindow
+                MainActor.assumeIsolated { self?.globalMouseDown(at: location) }
             }
-        }
-        let local = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
-            // The event is not Sendable: read what is needed out here.
-            let window = event.window
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let click: PopoverClick
-                if window === self.statusItem?.button?.window {
-                    click = .statusButton
-                } else if let window, window === self.popover.contentViewController?.view.window
-                            || window.parent === self.popover.contentViewController?.view.window {
-                    // The panel itself, or a menu one of its pickers opened.
-                    click = .insidePanel
-                } else {
-                    click = .elsewhere
-                }
-                self.handleClick(click)
+            let local = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
+                let window = event.window
+                MainActor.assumeIsolated { self?.localMouseDown(in: window) }
+                return event
             }
-            return event
+            clickMonitors = [global, local].compactMap { $0 }
+        } else if !needed, !clickMonitors.isEmpty {
+            clickMonitors.forEach(NSEvent.removeMonitor)
+            clickMonitors = []
         }
-        clickMonitors = [global, local].compactMap { $0 }
     }
 
-    private func handleClick(_ click: PopoverClick) {
-        if click.closesPanel, popover.isShown {
-            monitorClosedAt = now()
+    /// Anything outside the app — which on macOS 27 includes our own status item,
+    /// because another process hosts the menu bar.
+    private func globalMouseDown(at location: CGPoint) {
+        // The frame is read now: the item's width changes with the display mode.
+        let onItem = statusItemOwns(location, itemWindowFrame: statusItem?.button?.window?.frame)
+        #if TRACE
+        Trace.log("GMON    onItem=\(onItem) shown=\(popover.isShown)")
+        #endif
+        if panelToggle.globalMouseDown(panelShown: popover.isShown, onStatusItem: onItem) == .close {
             popover.performClose(nil)
         }
+        syncClickMonitors()
     }
 
-    private func removeClickMonitors() {
-        clickMonitors.forEach(NSEvent.removeMonitor)
-        clickMonitors = []
+    /// A mouse-down inside the app.
+    private func localMouseDown(in window: NSWindow?) {
+        let click: PopoverClick
+        if window === statusItem?.button?.window {
+            click = .statusButton
+        } else if let window, window === popover.contentViewController?.view.window
+                    || window.parent === popover.contentViewController?.view.window {
+            // The panel itself, or a menu one of its pickers opened.
+            click = .insidePanel
+        } else {
+            click = .elsewhere
+        }
+        #if TRACE
+        Trace.log("LMON    click=\(click) shown=\(popover.isShown)")
+        #endif
+        if click.closesPanel, popover.isShown { closePanel() }
     }
 
     func popoverDidClose(_ notification: Notification) {
-        removeClickMonitors()
+        #if TRACE
+        Trace.log("DIDCLOSE")
+        #endif
         popover.contentViewController = nil
         panelModel = nil
         loginItemError = nil
+        // Also reached when `.transient` closed the panel on its own.
+        syncClickMonitors()
     }
 }
+
+#if TRACE
+/// Diagnostic build only (`swift build -Xswiftc -DTRACE`): records every mouse-down
+/// and every button action, to find out which clicks never produce an action.
+/// Never compiled into a release.
+@MainActor
+enum Trace {
+    private static var handle: FileHandle?
+    private static let start = ContinuousClock().now
+    private static var monitors: [Any] = []
+
+    static func install(_ delegate: AppDelegate) {
+        let path = ProcessInfo.processInfo.environment["NET_METER_TRACE"] ?? "/tmp/net-meter-trace.log"
+        FileManager.default.createFile(atPath: path, contents: nil)
+        handle = FileHandle(forWritingAtPath: path)
+        log("START pid=\(ProcessInfo.processInfo.processIdentifier)")
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp]
+        let global = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak delegate] event in
+            let location = event.locationInWindow, type = event.type.rawValue, number = event.eventNumber
+            MainActor.assumeIsolated { delegate?.traceMouse("GLOBAL", type: type, number: number, location: location) }
+        }
+        let local = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak delegate] event in
+            let location = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? event.locationInWindow
+            let type = event.type.rawValue, number = event.eventNumber
+            MainActor.assumeIsolated { delegate?.traceMouse("LOCAL ", type: type, number: number, location: location) }
+            return event
+        }
+        monitors = [global, local].compactMap { $0 }
+    }
+
+    static func log(_ message: String) {
+        let elapsed = ContinuousClock().now - start
+        let ms = Int(elapsed.components.seconds) * 1000 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
+        handle?.write(Data("\(ms) \(message)\n".utf8))
+    }
+}
+
+extension AppDelegate {
+    func traceMouse(_ source: String, type: UInt, number: Int, location: CGPoint) {
+        let frame = traceItemFrame
+        let onItem = statusItemOwns(location, itemWindowFrame: frame)
+        Trace.log("\(source) type=\(type == 1 ? "down" : "up")#\(number) onItem=\(onItem) active=\(NSApp.isActive) shown=\(tracePanelShown)")
+    }
+}
+#endif
