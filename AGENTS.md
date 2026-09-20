@@ -242,9 +242,12 @@ building the thing it is about.
   open for 1,906 ms, and no activation happened at all (one run). In a second
   session with another app frontmost throughout: three menus opened and stayed
   open (1,205–1,768 ms), two selections of a different value were both applied,
-  and two outside clicks both closed the panel. **Not measured with the new panel:
-  closing it by clicking the item again** — `PanelToggle` is unchanged and pinned
-  by tests, but the close path under it is new. `PanelWindowTests`
+  and two outside clicks both closed the panel. In later sessions: a click on the
+  item closed the open panel and that click's action, 27 ms later, was dropped as
+  designed (one of one); another app coming to the front closed it (one of one);
+  Esc closed it (two of two, read from a close with no mouse-down before it).
+  **Not measured:** a Space change, copying from the context menu, and anything at
+  all on macOS 26 — the VM has no way to click. `PanelWindowTests`
   pins the style bit and scans the sources: `.activate(`, `yieldActivation` and
   `NSPopover(` fail the build's tests. (KB: "メニューバー用 NSPanel の罠 2 件")
 - **`NSApp.isActive` reads true while the non-activating panel is key** — with no
@@ -441,7 +444,12 @@ building the thing it is about.
   panel 56–57 pt to the right after going from graph only back to numbers and
   graph (same mode, x 2102 on open and 2159 after the change, twice) — flagged as
   unmeasured by the pre-release review and then measured. A delay instead of the
-  notification would be the same guess with a bigger number.
+  notification would be the same guess with a bigger number. After the change:
+  three mode changes with the panel open, one placement each, 44–50 ms after the
+  change, at the item's centre every time, and back at the opening x for the
+  opening mode. The item also moved by 1–5 pt twice with nothing of ours
+  happening — a neighbour changed width — so the notification is needed for more
+  than the display mode.
 - **Single instance covers the bundle, not the bare binary.**
   `LSMultipleInstancesProhibited` stops LaunchServices launches;
   `singleInstanceDecision` stops direct exec of the bundled binary and `open -n`
