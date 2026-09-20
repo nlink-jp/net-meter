@@ -238,7 +238,12 @@ building the thing it is about.
   the signed bundle started by LaunchServices. **Test anything that depends on
   activation from a LaunchServices launch, within the first half minute.** With
   `.nonactivatingPanel` the same first click, 21.8 s after launch, left the menu
-  open for 1,906 ms, and no activation happened at all (one run). `PanelWindowTests`
+  open for 1,906 ms, and no activation happened at all (one run). In a second
+  session with another app frontmost throughout: three menus opened and stayed
+  open (1,205–1,768 ms), two selections of a different value were both applied,
+  and two outside clicks both closed the panel. **Not measured with the new panel:
+  closing it by clicking the item again** — `PanelToggle` is unchanged and pinned
+  by tests, but the close path under it is new. `PanelWindowTests`
   pins the style bit and scans the sources: `.activate(`, `yieldActivation` and
   `NSPopover(` fail the build's tests. (KB: "メニューバー用 NSPanel の罠 2 件")
 - **`NSApp.isActive` reads true while the non-activating panel is key** — with no
