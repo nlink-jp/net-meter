@@ -82,6 +82,7 @@ verify-release:
 test:
 	swift test
 	python3 scripts/test_check_docs.py
+	python3 spikes/test_analyze_watch.py
 	python3 scripts/check_docs.py
 
 ## run: build and run (debug)

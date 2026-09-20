@@ -27,15 +27,23 @@ netstat -ibn -I en0; .build/counters; netstat -ibn -I en0
 
 What this showed (2026-09-20):
 
-| Environment | Floored to 1 KiB | Truncated to 32 bits | Observations |
-|-------------|------------------|----------------------|--------------|
-| macOS 27.0 (real machine, wired) | Yes | Yes — the value is the true value modulo 2^32 | Two bracketed comparisons, run independently |
-| macOS 26.6.2 (VM, virtual NIC) | Yes | Unconfirmed — the counters were below 4 GiB | One bracketed comparison |
+| Environment | Byte counters floored to 1 KiB | Byte counters truncated to 32 bits | Observations |
+|-------------|-------------------------------|------------------------------------|--------------|
+| macOS 27.0 (real machine, wired) | Yes | Yes — the value is the true value modulo 2^32 | Three bracketed comparisons, one of them run independently |
+| macOS 26.6.2 (VM, virtual NIC) | Yes | Yes — true 5,438,231,389 read as 1,143,263,232 | Flooring three times; truncation once, after pushing 4.5 GB in so the true counter passed 2^32 |
 
-Not read yet: the packet counters (`ifi_ipackets` / `ifi_opackets`) and the link
-speed (`ifi_baudrate`). The reset rule's candidates depend on them, and since the
-byte counters arrive altered, these cannot be assumed to arrive untouched. Extend
-this spike to print them before designing the rule.
+The packet counters (`ifi_ipackets` / `ifi_opackets`) arrive **unaltered**: not
+floored, and equal to `netstat` on an idle interface (macOS 27.0 on two interfaces,
+macOS 26.6.2 on one). Whether they are truncated to 32 bits is unknown — no
+interface had reached 2^32 packets.
+
+The link speed (`ifi_baudrate`) is readable but **is not a ceiling**: wired
+reported 2,500,000,000 (matching `ifconfig`'s 2500Base-T), Wi-Fi 239,040,000, a
+virtual NIC on the host 100,000,000 while carrying 2.3 Gbps, and the VM's virtual
+NIC 0. ADR-0001 therefore does not judge samples by it.
+
+`counters --raw` prints one machine-readable reading (`name rx tx ipkts opkts
+baud`) for scripted comparisons.
 
 Reading notes:
 
@@ -43,8 +51,12 @@ Reading notes:
   4 GiB. Compare against `netstat`'s value modulo 4294967296.
 - In `netstat -ibn` output, a row without an address (`lo0`, `utun*`) has one
   column fewer, so `Ibytes`/`Obytes` are fields 6 and 9 there instead of 7 and 10.
-- Pushing 4 GiB through loopback with `nc` did not generate traffic on the VM;
-  another way of producing the load is needed to settle the macOS 26 column.
+- To get a counter past 2^32 on a fresh machine, push data into it over SSH:
+  `head -c 4500000000 /dev/zero | ssh <vm> 'cat > /dev/null'` took 16 seconds to
+  a VM on the same host. (An earlier attempt with `nc` over loopback generated no
+  traffic.)
+- Scripts that drive `ssh` with options held in a variable belong in bash, not
+  zsh: zsh does not split an unquoted variable into words.
 
 To run it on an older macOS than the build machine, cross-compile and copy the
 binary over; an ad-hoc signed binary copied with `scp` carries no quarantine
@@ -53,6 +65,36 @@ attribute and runs as is.
 ```bash
 swiftc -O -target arm64-apple-macos26.0 spikes/counters.swift -o .build/counters26
 ```
+
+## watch.swift and analyze_watch.py
+
+`watch` records what the app will see, once per second, as JSON lines: elapsed
+time on a clock that keeps running during sleep, the interface preference order
+with types, and every interface's raw counters. `analyze_watch.py` reads the log
+and reports, per interface, the largest bytes-per-packet ratio in one sample,
+stretched intervals, counters that went backwards, interfaces appearing and
+disappearing, and changes in the preference order. Its tests run with `make test`.
+
+```bash
+swiftc -O spikes/watch.swift -o .build/watch
+```
+
+```bash
+.build/watch 120 > watch.jsonl
+```
+
+```bash
+python3 spikes/analyze_watch.py watch.jsonl
+```
+
+What this showed (2026-09-20, macOS 27.0, 50 samples, 17 interfaces, while pushing
+and then pulling 2 GB at about 286 MB/s): the largest bytes-per-packet ratio was
+31,477 (TSO makes a counted packet larger than the MTU, but none exceeded
+64 KiB); no sample had more than 1 KiB of bytes with zero packets; no stretched
+interval and no counter going backwards. These are the inputs to ADR-0001.
+
+Still to be recorded with it: a wake from sleep, a VPN connecting and
+disconnecting, an adapter being unplugged, a switch between Wi-Fi and wired.
 
 ## path_order.swift
 
@@ -68,8 +110,9 @@ swiftc -O spikes/path_order.swift -o .build/path_order
 .build/path_order
 ```
 
-What this showed (2026-09-20, macOS 27.0, no VPN, two runs): wired Ethernet first,
-Wi-Fi second, and **the same interface listed twice** — in both runs. Behaviour
+What this showed (2026-09-20, macOS 27.0, no VPN, three runs including one by
+`watch`): wired Ethernet first, Wi-Fi second, and **the same interface listed
+twice** — in all three. Behaviour
 while a VPN is connected has not been measured yet; run it with the VPN up and
 check that the tunnel interface appears with type `other` and is skipped, and
 that the physical interface is still in the list.
