@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // The symbol goes in `button.image`: `isTemplate` is honoured only
             // there, and it is what makes the icon follow the menu bar's colour.
             if let image = NSImage(
-                systemSymbolName: "arrow.up.arrow.down",
+                systemSymbolName: SymbolName.statusPlaceholder,
                 accessibilityDescription: "net-meter"
             ) {
                 image.isTemplate = true
