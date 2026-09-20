@@ -35,8 +35,10 @@ make test
 make run
 ```
 
-`make run` starts a debug build from the terminal. Only one copy runs at a time:
-quit a running net-meter before starting another.
+`make run` starts a debug build from the terminal. Quit a running net-meter
+first. The single-instance guard covers the assembled `.app` only: a debug binary
+has no bundle identifier to be recognised by, so it starts anyway and a second
+menu bar item appears.
 
 ## Documentation
 

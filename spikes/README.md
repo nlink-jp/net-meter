@@ -27,10 +27,15 @@ netstat -ibn -I en0; .build/counters; netstat -ibn -I en0
 
 What this showed (2026-09-20):
 
-| Environment | Floored to 1 KiB | Truncated to 32 bits |
-|-------------|------------------|----------------------|
-| macOS 27.0 (real machine) | Yes | Yes — the value is the true value modulo 2^32 |
-| macOS 26.6.2 (VM) | Yes | Unconfirmed — the counters were below 4 GiB |
+| Environment | Floored to 1 KiB | Truncated to 32 bits | Observations |
+|-------------|------------------|----------------------|--------------|
+| macOS 27.0 (real machine, wired) | Yes | Yes — the value is the true value modulo 2^32 | Two bracketed comparisons, run independently |
+| macOS 26.6.2 (VM, virtual NIC) | Yes | Unconfirmed — the counters were below 4 GiB | One bracketed comparison |
+
+Not read yet: the packet counters (`ifi_ipackets` / `ifi_opackets`) and the link
+speed (`ifi_baudrate`). The reset rule's candidates depend on them, and since the
+byte counters arrive altered, these cannot be assumed to arrive untouched. Extend
+this spike to print them before designing the rule.
 
 Reading notes:
 
@@ -63,7 +68,8 @@ swiftc -O spikes/path_order.swift -o .build/path_order
 .build/path_order
 ```
 
-What this showed (2026-09-20, macOS 27.0, no VPN): wired Ethernet first, Wi-Fi
-second, and **the same interface listed twice**. Behaviour while a VPN is
-connected has not been measured yet; run it with the VPN up and check that the
-tunnel interface appears with type `other` and is skipped.
+What this showed (2026-09-20, macOS 27.0, no VPN, two runs): wired Ethernet first,
+Wi-Fi second, and **the same interface listed twice** — in both runs. Behaviour
+while a VPN is connected has not been measured yet; run it with the VPN up and
+check that the tunnel interface appears with type `other` and is skipped, and
+that the physical interface is still in the list.
