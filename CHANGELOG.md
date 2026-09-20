@@ -14,12 +14,14 @@ Semantic Versioning.
   activated the app instead and the activation ended the menu (71 ms after it
   began, measured). The panel is now a non-activating panel and the app never
   asks to be activated: the menus work from the first click, and opening the
-  panel no longer takes the keyboard from the app you are working in (ADR-0003).
+  panel no longer makes net-meter the active app (ADR-0003).
 
 ### Changed
 
 - The panel appears directly below the menu bar item, without the popover's
-  arrow, and is kept within the screen. Esc closes it.
+  arrow, and is kept within the screen. Esc closes it, and so does another app
+  coming to the front or a change of Space. While it is open the keyboard
+  belongs to the panel.
 
 ## [0.1.0] - 2026-09-20
 

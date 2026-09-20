@@ -87,7 +87,7 @@ macOS のメニューバーで、いま使っているネットワークイン�
 - Swift 6（strict concurrency）/ Swift Package Manager。
 - メニューバーの描画は AppKit の `NSStatusItem` に自前描画する。SwiftUI の
   `MenuBarExtra` は、2 行のカスタムレイアウトと毎秒の更新に向かないため使わない。
-- パネルは SwiftUI を ~~`NSPopover`~~ アクティブ化しない `NSPanel`（追補 A13、ADR-0003）に載せ、
+- パネルは SwiftUI を ~~`NSPopover`~~ アクティブ化しない `NSPanel`（2026-09-20: 追補 A13、ADR-0003）に載せ、
   履歴グラフは Swift Charts で描く。
   パネルの内容は開いたときに生成し、閉じたら解放する。
 - 対応環境は macOS 26 以降・Apple Silicon 専用。

@@ -76,6 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         center.addObserver(self, selector: #selector(menuDidBeginTracking), name: NSMenu.didBeginTrackingNotification, object: nil)
         center.addObserver(self, selector: #selector(menuDidEndTracking), name: NSMenu.didEndTrackingNotification, object: nil)
 
+        // The user can go elsewhere without a mouse-down: another app comes to the
+        // front (Cmd-Tab), or the Space changes. A popover closed itself then; a
+        // non-activating panel is told nothing, stays where it was — out of sight
+        // after a Space change — and the next click on the item would close a panel
+        // nobody can see. Both go down the one close path.
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(userWentElsewhere), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(anotherAppCameForward), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+
         pathMonitor.start { [weak self] _ in
             Task { @MainActor in self?.controller?.refresh() }
         }
@@ -107,7 +116,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // panel hangs from. The item's window has not moved yet at this point,
             // so the panel is placed again on the next turn of the run loop.
             if panelOpen {
-                DispatchQueue.main.async { [weak self] in self?.placePanel() }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.panelOpen else { return }
+                    self.placePanel()
+                }
             }
         }
 
@@ -173,9 +185,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// The one way the panel closes: a click elsewhere, a click on the item, Esc.
-    /// Everything that was set up on open is undone here, so none of it can be
-    /// skipped. Safe to call when the panel is already closed.
+    @objc private func userWentElsewhere() {
+        #if TRACE
+        if panelOpen { Trace.log("SPACE   changed") }
+        #endif
+        hidePanel()
+    }
+
+    @objc private func anotherAppCameForward(_ note: Notification) {
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        guard app?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        #if TRACE
+        if panelOpen { Trace.log("FRONT   \(app?.bundleIdentifier ?? "nil")") }
+        #endif
+        hidePanel()
+    }
+
+    /// The one way the panel closes: a click elsewhere, a click on the item, Esc,
+    /// another app coming forward, a Space change. The content, the model and the
+    /// update gate are released here and nowhere else, and the click monitors are
+    /// brought in line — they stay only until a closing click's action has been
+    /// dealt with (PanelToggle). Safe to call when the panel is already closed.
     private func hidePanel() {
         #if TRACE
         if panelOpen { Trace.log("HIDE") }
@@ -313,9 +343,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 #if TRACE
-/// Diagnostic build only (`swift build -Xswiftc -DTRACE`): records every mouse-down
-/// and every button action, to find out which clicks never produce an action.
-/// Never compiled into a release.
+/// Diagnostic build only (`make build-app SWIFT_FLAGS="-Xswiftc -DTRACE" DIST_DIR=dist/trace`):
+/// records mouse-downs, button actions, menu tracking, activation and what the
+/// panel does about them. Never compiled into a release; `make verify-release`
+/// looks for these symbols in the binary.
 @MainActor
 enum Trace {
     private static var handle: FileHandle?

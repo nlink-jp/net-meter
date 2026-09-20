@@ -33,8 +33,9 @@ displays of mixed scale.
   running from `dist/` has to be quit and started again.
 - `make package` — build-app, then notarize + staple (`nlink-jp-notary` keychain
   profile), and zip to `dist/net-meter-<version>-darwin-arm64.zip`.
-- `make verify-release` — gate: `.notarized` marker, `stapler validate`, and the
-  linked SDK (run before upload).
+- `make verify-release` — gate: `.notarized` marker, `stapler validate`, the
+  linked SDK, and no diagnostic recorder in the binary — after first seeing that
+  the binary shows the app's own symbols (run before upload).
 - `make brew` — generate the Homebrew cask from the built zip into the local
   `nlink-jp/homebrew-tap` checkout (see `scripts/release-brew.mk`).
 - `make test` — `swift test`, then `scripts/test_check_docs.py`,
@@ -253,10 +254,19 @@ building the thing it is about.
   (Esc, text selection) and `canBecomeMain` false; never `hidesOnDeactivate` (it
   hides without clearing `isVisible`); whether the panel is open is the app's own
   boolean, set in `showPanel` and `hidePanel` only; **one close path** —
-  `hidePanel` — for outside clicks, a click on the item and Esc, and it always
-  removes the monitors and releases the content. Nothing tells a non-activating
-  panel that the user clicked elsewhere, so global + local mouse-down monitors are
-  installed while it is open. The local monitor ignores the status item button's
+  `hidePanel` — for outside clicks, a click on the item, Esc, another app coming
+  to the front and a Space change; it always releases the content, the model and
+  the update gate, and brings the monitors in line (they stay until a closing
+  click's action has been dealt with). Nothing tells a non-activating panel that
+  the user went elsewhere — a popover closed itself on Cmd-Tab and on a Space
+  change; this panel stayed open, out of sight after a Space change, and the next
+  click on the item would have closed a panel nobody could see (found in review,
+  not reported). So global + local mouse-down monitors are installed while it is
+  open, and `NSWorkspace`'s `didActivateApplication` and `activeSpaceDidChange`
+  close it. **The panel takes key status, so while it is open the keyboard is the
+  panel's** — do not document it as "does not take the keyboard"; what it never
+  takes is activation. Content taller than the visible frame (under about 566 pt)
+  is clipped; not handled. The local monitor ignores the status item button's
   window (its action toggles; closing too would reopen) and the panel's own, a
   menu's child window included; that decision is `PanelClick.closesPanel`, pinned
   by a test. Under Swift 6 the handlers are nonisolated: wrap the body in

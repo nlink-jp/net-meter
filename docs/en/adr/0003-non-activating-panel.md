@@ -72,6 +72,25 @@ started from a terminal probably got through because it was a child of the front
 - **Replace the pop-up buttons with segmented controls or radio buttons.** Rejected. The
   interface list has an open-ended number of entries and fits nothing but a menu.
 
+## Amendments
+
+### 2026-09-20 — from the independent review before the release
+
+- **"No longer takes focus" was imprecise.** What the app never takes is *activation*: the
+  frontmost app does not change (measured). The panel does take key status while it is open,
+  so keystrokes go to the panel until it closes — that is what makes Esc work. The README and
+  the changelog say it this way.
+- **Decision 6 listed three ways to close; there are five.** Going elsewhere does not always
+  involve a mouse-down: another app comes to the front (Cmd-Tab), or the Space changes. A
+  popover closed itself then; a non-activating panel is told nothing, and after a Space change
+  it stayed open out of sight, so that the next click on the item closed a panel nobody could
+  see. Both now go down the same close path.
+- **"Always removes the monitors" was overstated.** The close path brings the monitors in
+  line: they stay until the action of a closing click on the item has been dealt with.
+- **Known limitation, not handled:** content taller than the screen's visible frame (under
+  about 566 pt) is clipped at the top and the bottom. It needs a scrolling design.
+- **Not measured with the new panel:** copying an address from the context menu.
+
 ## References
 
 - Org knowledge base, macos-gui: "two pitfalls of a menu bar NSPanel" (pitfall 2: activation
