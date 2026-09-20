@@ -10,7 +10,7 @@ Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
 The menu bar item shows two lines of rates and a mirrored graph of the last
-minute, redrawn every second. Clicking it opens the panel: a three-minute history
+fourteen seconds (one bar a second), redrawn every second. Clicking it opens the panel: a three-minute history
 chart, the interface's addresses and reported link speed, peaks, totals since
 launch, every setting, launch at login, the version and Quit.
 

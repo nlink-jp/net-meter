@@ -144,3 +144,18 @@ interface was appended **at the end** of the list with type `other`, and the
 physical interfaces kept their places — `en0`, `en0`, `en1`, `utun6`. A
 full-tunnel VPN, which takes over the default route, has not been measured and
 may order the list differently.
+
+## CPU while resident (the shipped app, not a spike)
+
+Taken from the installed `NetMeter.app` v0.1.1 (/Applications, launched at login),
+2026-09-21, Apple silicon, macOS 27, one sample each:
+
+| What | Value |
+|---|---|
+| `ps -o time=` before / after a 60 s wait, panel not touched | 6:24.56 → 6:25.31 = **1.25%** of one core |
+| cumulative CPU time over uptime (`ps -o etime=,time=`) | 384 s over 26 630 s = **1.44%** |
+
+The 0.1.0 changelog's "about 0.3%" came from the first live build of 2026-09-20,
+before the panel and the one-bar-a-second graph, and was not re-measured when
+they landed. One machine, one run each: enough to say the old figure was wrong,
+not enough to call this one a specification.

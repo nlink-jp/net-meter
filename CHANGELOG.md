@@ -4,6 +4,20 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
+## [Unreleased]
+
+### Documentation
+
+- **The CPU figure was wrong by about four times.** 0.1.0's notes say "about 0.3%
+  CPU while resident". That was measured on the day's first build, before the
+  panel and the second-by-second graph existed, and was never re-taken. The
+  shipped 0.1.1, left running from /Applications on an M-series Mac: 1.25% of one
+  core over a 60-second sample (`ps` cumulative CPU time, panel not touched), and
+  1.44% averaged over the 7 h 24 min it had been up. The figure is recorded in
+  `spikes/README.md` with how it was taken, which the 0.3% never was.
+- `AGENTS.md` described the menu bar graph as "the last minute"; it is fourteen
+  seconds, as the READMEs say.
+
 ## [0.1.1] - 2026-09-20
 
 ### Fixed
@@ -64,7 +78,9 @@ Semantic Versioning.
   ceiling. An hour of recorded use with at least three real wraps replayed
   without one sample misjudged.
 - No permission of any kind: no privacy grant, no entitlement, no administrator
-  rights, and no network connection of its own. About 0.3% CPU while resident.
+  rights, and no network connection of its own. About 0.3% CPU while resident —
+  measured before the panel and the graph existed; the shipped app measures
+  about 1.3% (see Unreleased).
 - A single-instance guard, so a second copy exits instead of stacking a second
   menu bar item.
 - `make test` checks the documents as well as the code: relative links resolve,
