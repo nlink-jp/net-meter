@@ -109,11 +109,14 @@ For the recording above: on every interface, one baseline and then nothing but
 rates — no sample judged a reset, none discarded. `utun6` started from a baseline
 when it appeared.
 
-A third recording (2026-09-20, macOS 27.0, 3,482 samples — about 58 minutes of
-ordinary use with other work running): the wired interface sent 16.6 GB, so its
-32-bit byte counter **wrapped at least three times** during the recording.
-Replayed through `Meter`: one baseline and then 3,481 rates on every interface —
-no wrap was judged a reset, and nothing was discarded.
+A third recording (2026-09-20, macOS 27.0, 3,569 samples — an hour of ordinary
+use with other work running, the split-tunnel VPN period above included): the
+wired interface sent 17.1 GB at up to 50.7 MB/s, so its 32-bit byte counter
+**wrapped at least three times** during the recording. No stretched interval, no
+counter going backwards, no bytes without packets; the largest bytes-per-packet
+ratio was 43,776 — the highest seen so far, still below 64 KiB. Replayed through
+`Meter`: one baseline and then 3,568 rates on every interface that was present
+throughout — no wrap was judged a reset, and nothing was discarded.
 
 Still to be recorded: a wake from sleep, an adapter being unplugged, a switch
 between Wi-Fi and wired, and a full-tunnel VPN.
