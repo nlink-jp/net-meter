@@ -204,11 +204,13 @@ building the thing it is about.
   interface". How the list looks with a VPN up has not been measured; if the
   tunnel does not appear as type `other`, or the physical interface drops out of
   the list, the automatic-selection rule is revisited in an ADR.
-- **A status item cannot be observed through the app's own window list on
-  macOS 27.** `CGWindowListCopyWindowInfo` filtered by the app's pid returned no
-  window while the item was visibly in the menu bar (one observation, macOS 27.0):
-  the item's window does not belong to the app's process. An empty result there
-  is not evidence that nothing is shown. Verify appearance by eye, through the
+- **A status item cannot be observed through the window list on macOS 27.**
+  `CGWindowListCopyWindowInfo` filtered by the app's pid returned no window (two
+  observations, macOS 27.0; in the first the item was confirmed by eye), and the
+  total window count was the same before and after launch — no process gained a
+  window for it. An empty result there is not evidence that nothing is shown, and
+  a probe should print the total count so that "cannot see the window server" is
+  not mistaken for "no window". Verify appearance by eye, through the
   accessibility tree with synthetic clicks, or by having the app report its own
   geometry. (KB testing.md: "メニューバーアプリのポップオーバーはスクリプトから
   検証できる")
