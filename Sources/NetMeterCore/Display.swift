@@ -72,40 +72,24 @@ public struct GraphColumn: Equatable, Sendable {
 }
 
 public enum GraphWindow {
-    /// 12 columns of 5 seconds: the "about 60 seconds" of the RFP, in bars wide
-    /// enough to read at a glance on a 1x display.
-    public static let columns = 12
-    public static let secondsPerColumn = 5.0
+    /// One bar per sample, fourteen of them: the graph moves left by exactly one
+    /// bar every second, and a bar never changes once it is drawn. The three-minute
+    /// view is the panel's job.
+    ///
+    /// Bars used to be time buckets — first measured back from `now`, then fixed to
+    /// absolute five-second slots. Both looked wrong in motion: the graph stood
+    /// still for seconds and then jumped, the newest bar kept changing height, and
+    /// with one-second slots a jittery timer would leave holes and merge samples at
+    /// slot edges. Counting samples has no edges to fall across.
+    public static let columns = 14
 
-    /// Buckets a history into columns, oldest first. Buckets are fixed to absolute
-    /// time — slot `floor(time / secondsPerColumn)` — not measured back from `now`:
-    /// measured from `now`, a sample crosses a bucket edge at a moment that depends
-    /// on its own phase, so two bursts drift apart and together as they scroll.
-    /// The newest column is the slot `now` falls in and fills up as it goes.
-    /// A column takes the highest rate in its bucket — a one-second burst must not
-    /// be averaged away. A bucket with no valued sample is nil, so the graph leaves
-    /// a gap instead of drawing zero.
-    public static func columns(
-        from history: [HistoryPoint],
-        now: Double,
-        count: Int = GraphWindow.columns,
-        secondsPerColumn: Double = GraphWindow.secondsPerColumn
-    ) -> [GraphColumn?] {
-        var result = [GraphColumn?](repeating: nil, count: count)
-        for point in history {
-            guard let rate = point.rate else { continue }
-            guard point.time <= now else { continue }
-            let slotsAgo = (now / secondsPerColumn).rounded(.down) - (point.time / secondsPerColumn).rounded(.down)
-            // Compared as Doubles first: converting an unbounded Double to Int traps.
-            guard slotsAgo >= 0, slotsAgo < Double(count) else { continue }
-            let index = count - 1 - Int(slotsAgo)
-            let existing = result[index] ?? GraphColumn(down: 0, up: 0)
-            result[index] = GraphColumn(
-                down: max(existing.down, rate.downBytesPerSecond),
-                up: max(existing.up, rate.upBytesPerSecond)
-            )
+    /// The last `count` history points, oldest first, padded on the left. A point
+    /// without a value stays nil, so the graph leaves a gap instead of drawing zero.
+    public static func columns(from history: [HistoryPoint], count: Int = GraphWindow.columns) -> [GraphColumn?] {
+        let recent = history.suffix(count).map { point in
+            point.rate.map { GraphColumn(down: $0.downBytesPerSecond, up: $0.upBytesPerSecond) }
         }
-        return result
+        return [GraphColumn?](repeating: nil, count: max(0, count - recent.count)) + recent
     }
 
     /// The scale for a set of columns: shared by both directions, with the floor.

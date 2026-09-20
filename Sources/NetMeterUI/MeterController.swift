@@ -12,6 +12,9 @@ public final class MeterController {
     public private(set) var meter = Meter()
     public private(set) var resolved: ResolvedInterface = .absent
     public private(set) var content: StatusContent
+    /// The scale the graph was last drawn with, and for which interface.
+    private var graphScale = GraphScale.defaultFloor
+    private var graphScaleInterface: String?
 
     /// Called whenever `content` may have changed: after a tick, and at once
     /// after a settings change — a setting must not wait for the next tick to
@@ -47,12 +50,16 @@ public final class MeterController {
     /// One reading of every interface. Call once a second.
     public func tick() {
         meter.ingest(counters.read(), at: now())
-        refresh()
+        refresh(newSample: true)
     }
 
     /// Recomputes what is on display from what is already known. Also called
     /// when the interface preference order changes.
     public func refresh() {
+        refresh(newSample: false)
+    }
+
+    private func refresh(newSample: Bool) {
         resolved = resolveInterface(
             selection: settings.selection,
             pathOrder: pathOrder(),
@@ -60,13 +67,28 @@ public final class MeterController {
         )
         var columns: [GraphColumn?] = []
         var latest: SampleOutcome?
+        var interface: String?
         if case .present(let name) = resolved {
+            interface = name
             latest = meter.latest(for: name)
-            columns = GraphWindow.columns(from: meter.history(for: name), now: now())
+            columns = GraphWindow.columns(from: meter.history(for: name))
+        }
+        let target = GraphWindow.fullScale(of: columns)
+        if interface != graphScaleInterface {
+            // Another interface: its graph is not judged by the last one's peaks.
+            graphScale = target
+            graphScaleInterface = interface
+        } else if newSample {
+            // Eased once per sample, not once per redraw: a settings change must
+            // not speed the scale up.
+            graphScale = GraphScale.eased(previous: graphScale, target: target)
+        } else {
+            graphScale = max(graphScale, target)
         }
         content = StatusContent(
             reading: meterReading(resolved: resolved, latest: latest),
             columns: columns,
+            fullScale: graphScale,
             mode: settings.displayMode,
             unit: settings.unit
         )

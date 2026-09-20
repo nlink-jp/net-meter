@@ -46,7 +46,8 @@ A menu bar resident GUI app with no Dock icon. There is no CLI.
   and the digits are monospaced and right-aligned, so that neighbouring icons do not move
   every time the number of digits changes.
 - The graph has its origin at the vertical centre: upstream is drawn upwards and
-  downstream downwards. The window is about 60 seconds.
+  downstream downwards. ~~The window is about 60 seconds.~~ (2026-09-20: changed to the last
+  fourteen samples, one bar each — see Amendment A12.)
 - The vertical axis is a linear auto-scale that follows the maximum within the window.
   The full scale has a floor, so that trickle traffic while idle does not fill the graph.
   Upstream and downstream share one scale.
@@ -326,6 +327,19 @@ stays in the list. The 385 samples of real traffic recorded from before the conn
 after the disconnection were also fed through `Meter`: no sample was misjudged as a reset
 and none was discarded. A wake from sleep, an adapter being unplugged and a switch between
 Wi-Fi and wired remain unmeasured.
+
+**A12. One bar of the menu bar graph is one sample (correction to §2 Menu bar display)**
+The body said "the window is about 60 seconds". When the bars were made wider on real
+hardware (2 pt with a 1 pt gap), each bar became a five-second time bucket to keep that
+minute — and the user reported that although the graph should be moving from right to left,
+its segments changed oddly as time passed. Drawn as a second-by-second filmstrip, the graph
+stood still for about five seconds and then jumped by a whole bar, and in between only the
+rightmost bar kept changing height. Bars are no longer cut by time: **the last fourteen
+samples are drawn one bar each**. The graph moves left by exactly one bar every second and a
+bar never changes once drawn. The window becomes about fourteen seconds; the longer view is
+the panel's three-minute chart. With it, the vertical auto-scale now **grows at once and comes
+down by 20% per sample**, so that the remaining bars do not all jump taller in the instant a
+peak leaves the window.
 
 ---
 

@@ -10,8 +10,9 @@ Semantic Versioning.
 
 - The menu bar item: the upstream and downstream rate of one network interface
   as two lines of numbers with solid arrows, and a mirrored graph of the last
-  minute in twelve five-second bars — upstream above the centre line, downstream
-  below it. Its width depends on the display mode alone, so neighbouring items do
+  fourteen seconds, one bar per second moving left as time passes — upstream
+  above the centre line, downstream below it. The scale grows at once and comes
+  down gradually, so bars already drawn do not all jump when a peak scrolls out. Its width depends on the display mode alone, so neighbouring items do
   not move when the digits or the unit change. Monochrome as a template image,
   so it takes the menu bar's own colour like the system's items; or coloured,
   with a foreground chosen from the menu bar the item reports (ADR-0002). Drawn

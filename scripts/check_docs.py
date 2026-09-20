@@ -27,6 +27,7 @@ RETIRED: dict[str, str] = {
     "statusPlaceholder": "the scaffold's placeholder symbol went when the item started drawing rates",
     "automaticChoice": "a string of the interim settings menu, which the panel replaced",
     "menuNeedsUpdate": "the interim settings menu was replaced by the panel",
+    "secondsPerColumn": "graph bars are samples, not time buckets (RFP Amendment A12)",
 }
 
 SEARCHED_DIRS = ("Sources", "Tests", "docs", "spikes")

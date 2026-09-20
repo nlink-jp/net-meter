@@ -64,12 +64,12 @@ Sources/
     RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
     Meter.swift            Per-interface baseline, history (nil = no value), totals, peaks, link speed; time is passed in
     RingBuffer.swift       Fixed-capacity history storage
-    GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
     InterfaceCatalog.swift "Ethernet (en0)" labels and the selection list (hardware ports first; an absent choice stays listed)
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
     Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate),
-                           GraphWindow: 12 columns x 5 s fixed to absolute time, the highest rate in each bucket
+                           GraphWindow: the last 14 samples, one bar each — no time buckets
+    GraphScale.swift       Shared up/down full scale with a floor; eased(previous:target:) — up at once, down by 20% a sample
     Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
                            PopoverClick.closesPanel, PanelToggle.decide
     LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval
@@ -315,9 +315,21 @@ building the thing it is about.
   strings, a symbol and a catalogue field unused; a reviewer found them, not a
   test. `UIStringsTests` now fails for a string nothing uses, and a withdrawn
   mechanism's name goes into `RETIRED` in `scripts/check_docs.py`.
-- **Graph buckets are fixed to absolute time.** Measured back from `now`, each
-  sample crossed a bucket edge at a moment set by its own phase, and two bursts
-  seven seconds apart sat one column apart on some ticks and two on others.
+- **A graph bar is a sample, not a time bucket.** Buckets were tried twice and
+  looked wrong in motion both times. Measured back from `now`, each sample
+  crossed a bucket edge at a moment set by its own phase, so two bursts drifted
+  apart and together. Fixed to absolute five-second slots, the graph stood still
+  for seconds and then jumped, and the newest bar kept changing height — which is
+  what a person watching the menu bar reported. One-second slots would lose and
+  merge samples whenever a jittery timer straddles a slot edge. Counting samples
+  has no edges. **Look at motion as a filmstrip**
+  (`NET_METER_PREVIEW_DIR=<dir> swift test --filter StatusFilmstripTests`): a
+  single rendered frame cannot show any of this, and neither could the tests.
+- **The graph's scale is eased, and by the controller, not the renderer.** When a
+  peak scrolls out, every remaining bar would otherwise jump taller at once. The
+  scale grows immediately (a bar is never clipped), comes down by 20% per sample,
+  moves only when a new sample arrives (a settings change must not speed it up),
+  and starts fresh when the displayed interface changes.
 - **Converting an unbounded `Double` to `Int` traps.** Compare or clamp as a
   `Double` first. No real rate gets there; a test with an absurd input does.
 - **Re-anchor the popover when the item's width changes.** Display mode is changed

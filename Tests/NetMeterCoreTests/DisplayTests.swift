@@ -58,61 +58,66 @@ final class DisplayTests: XCTestCase {
 
     // MARK: graph columns
 
-    func testNewestSampleLandsInTheRightmostColumn() {
-        let columns = GraphWindow.columns(from: [HistoryPoint(time: 100, rate: rate(5, 7))], now: 100)
-        XCTAssertEqual(columns.count, GraphWindow.columns)
-        XCTAssertEqual(columns.last!, GraphColumn(down: 5, up: 7))
-        XCTAssertTrue(columns.dropLast().allSatisfy { $0 == nil })
-    }
-
-    func testAColumnKeepsTheHighestRateInItsBucket() {
-        let history = [HistoryPoint(time: 100.5, rate: rate(10, 1)), HistoryPoint(time: 102, rate: rate(3, 9))]
-        XCTAssertEqual(GraphWindow.columns(from: history, now: 103).last!, GraphColumn(down: 10, up: 9))
-    }
-
-    func testSamplesWithoutAValueLeaveAGapNotAZero() {
-        let history = [
-            HistoryPoint(time: 96, rate: rate(1, 1)),
-            HistoryPoint(time: 98, rate: nil),
-            HistoryPoint(time: 100, rate: rate(2, 2)),
-        ]
-        let columns = GraphWindow.columns(from: history, now: 100, count: 3, secondsPerColumn: 2)
-        XCTAssertEqual(columns, [GraphColumn(down: 1, up: 1), nil, GraphColumn(down: 2, up: 2)])
-    }
-
-    func testTheWindowIsAboutAMinute() {
-        XCTAssertEqual(Double(GraphWindow.columns) * GraphWindow.secondsPerColumn, 60)
-        let edge = HistoryPoint(time: 45.5, rate: rate(3, 3)), outside = HistoryPoint(time: 44.5, rate: rate(9, 9))
-        let columns = GraphWindow.columns(from: [outside, edge], now: 100)
-        XCTAssertEqual(columns.first!, GraphColumn(down: 3, up: 3))
-    }
-
-    func testTwoBurstsKeepTheirDistanceAsTheyScrollWhateverThePhase() {
-        // Buckets measured back from `now` made this distance flip between 1 and 2.
-        let bursts = [HistoryPoint(time: 100, rate: rate(9, 9)), HistoryPoint(time: 107, rate: rate(9, 9))]
-        var distances = Set<Int>()
-        var now = 107.0
-        while now < 150 {
-            let filled = GraphWindow.columns(from: bursts, now: now).enumerated().filter { $0.element != nil }.map(\.offset)
-            XCTAssertEqual(filled.count, 2, "both bursts are inside the window at now=\(now)")
-            distances.insert(filled[1] - filled[0])
-            now += 1.013  // a timer that is never exactly on the second
+    private func history(_ rates: [Double?]) -> [HistoryPoint] {
+        rates.enumerated().map { index, value in
+            // Times are deliberately ragged: the columns must not depend on them.
+            HistoryPoint(time: Double(index) * 1.013 + 0.37, rate: value.map { rate($0, $0 * 2) })
         }
-        XCTAssertEqual(distances, [1])
     }
 
-    func testAnAbsurdClockDoesNotTrap() {
-        let history = [HistoryPoint(time: 1, rate: rate(1, 1))]
-        XCTAssertTrue(GraphWindow.columns(from: history, now: 1e30).allSatisfy { $0 == nil })
+    func testOneBarPerSampleNewestOnTheRightPaddedOnTheLeft() {
+        let columns = GraphWindow.columns(from: history([5, 7]))
+        XCTAssertEqual(columns.count, GraphWindow.columns)
+        XCTAssertEqual(Array(columns.suffix(2)), [GraphColumn(down: 5, up: 10), GraphColumn(down: 7, up: 14)])
+        XCTAssertTrue(columns.dropLast(2).allSatisfy { $0 == nil })
     }
 
-    func testSamplesOlderThanTheWindowOrFromTheFutureAreIgnored() {
-        let history = [HistoryPoint(time: 10, rate: rate(9, 9)), HistoryPoint(time: 101, rate: rate(9, 9))]
-        XCTAssertTrue(GraphWindow.columns(from: history, now: 100).allSatisfy { $0 == nil })
+    func testEverySampleMovesTheGraphLeftByExactlyOneBarAndChangesNothingElse() {
+        // What the five-second buckets got wrong: the graph stood still, then
+        // jumped, and the newest bar kept changing. Here every frame is the
+        // previous one shifted by one, whatever the timer's phase.
+        var rates: [Double?] = (1...20).map { Double($0 * 1_000) }
+        rates[8] = nil
+        var previous: [GraphColumn?]?
+        for length in 1...rates.count {
+            let frame = GraphWindow.columns(from: history(Array(rates.prefix(length))))
+            if let previous {
+                XCTAssertEqual(Array(frame.dropLast()), Array(previous.dropFirst()), "frame \(length) is not the last one shifted")
+            }
+            previous = frame
+        }
+    }
+
+    func testASampleWithoutAValueIsAGapNotAZero() {
+        let columns = GraphWindow.columns(from: history([1, nil, 2]), count: 3)
+        XCTAssertEqual(columns, [GraphColumn(down: 1, up: 2), nil, GraphColumn(down: 2, up: 4)])
+    }
+
+    func testOnlyTheNewestSamplesAreShown() {
+        let columns = GraphWindow.columns(from: history((1...30).map { Double($0) }), count: 4)
+        XCTAssertEqual(columns.map { $0?.down }, [27, 28, 29, 30])
+        XCTAssertTrue(GraphWindow.columns(from: []).allSatisfy { $0 == nil })
     }
 
     func testFullScaleIsSharedAndHasAFloor() {
         XCTAssertEqual(GraphWindow.fullScale(of: [nil, GraphColumn(down: 10, up: 20)]), GraphScale.defaultFloor)
         XCTAssertEqual(GraphWindow.fullScale(of: [GraphColumn(down: 300_000, up: 2_400_000), nil]), 2_400_000)
+    }
+
+    func testTheScaleGrowsAtOnceAndComesDownGradually() {
+        // Growing is immediate: a bar must never be clipped.
+        XCTAssertEqual(GraphScale.eased(previous: 100_000, target: 2_000_000), 2_000_000)
+        // A peak leaves the window: the scale eases down instead of every bar jumping.
+        var scale = 2_000_000.0
+        var steps = 0
+        while scale > 100_000 {
+            let next = GraphScale.eased(previous: scale, target: 100_000)
+            XCTAssertLessThan(next, scale)
+            XCTAssertGreaterThanOrEqual(next, scale * GraphScale.easing - 1e-6)
+            scale = next
+            steps += 1
+        }
+        XCTAssertEqual(scale, 100_000, "it lands on the target exactly, never below it")
+        XCTAssertEqual(steps, 14, "about one graph width of samples for a 20:1 drop")
     }
 }

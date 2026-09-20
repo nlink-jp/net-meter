@@ -6,12 +6,16 @@ public struct StatusContent: Equatable, Sendable {
     public var reading: MeterReading
     /// Oldest first; nil where there was no value.
     public var columns: [GraphColumn?]
+    /// The rate drawn at full height.
+    public var fullScale: Double
     public var mode: DisplayMode
     public var unit: RateUnit
 
-    public init(reading: MeterReading, columns: [GraphColumn?], mode: DisplayMode, unit: RateUnit) {
+    /// - Parameter fullScale: nil takes the scale the columns call for, unsmoothed.
+    public init(reading: MeterReading, columns: [GraphColumn?], fullScale: Double? = nil, mode: DisplayMode, unit: RateUnit) {
         self.reading = reading
         self.columns = columns
+        self.fullScale = fullScale ?? GraphWindow.fullScale(of: columns)
         self.mode = mode
         self.unit = unit
     }
@@ -189,7 +193,7 @@ public enum StatusRenderer {
         NSRect(x: x, y: centre - pixel, width: graphWidth, height: pixel).fill()
 
         guard content.reading != .absent else { return }
-        let fullScale = GraphWindow.fullScale(of: content.columns)
+        let fullScale = content.fullScale
 
         func barHeight(_ value: Double) -> CGFloat {
             guard value > 0 else { return 0 }

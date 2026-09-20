@@ -93,6 +93,32 @@ final class MeterControllerTests: XCTestCase {
         XCTAssertEqual(controller.resolved, .present("en1"))
     }
 
+    func testTheGraphScaleEasesDownOncePerSampleAndStartsFreshOnAnotherInterface() {
+        let script = Script()
+        // en0: a 2 MB/s burst, then quiet. en1: always quiet.
+        let ups: [UInt64] = [0, 2_000_000, 2_010_000, 2_020_000, 2_030_000]
+        script.readings = ups.enumerated().map { index, up in
+            ["en0": counters(0, up, UInt64(index) * 100), "en1": counters(0, UInt64(index) * 10_000, UInt64(index) * 10)]
+        }
+        var time = 0.0
+        let controller = make(script, path: { self.path }, time: { time })
+        for step in 0..<2 { time = Double(step); controller.tick() }
+        XCTAssertEqual(controller.content.fullScale, 2_000_000)
+
+        // Shrink the window to nothing but quiet samples by looking at a short
+        // history: the peak is still in the window here, so the scale holds.
+        time = 2; controller.tick()
+        XCTAssertEqual(controller.content.fullScale, 2_000_000, "the peak is still on screen")
+
+        // A redraw without a new sample must not move the scale.
+        controller.settings.unit = .bits
+        XCTAssertEqual(controller.content.fullScale, 2_000_000)
+
+        // Another interface starts from its own scale, not the last one's peak.
+        controller.settings.selection = .manual("en1")
+        XCTAssertEqual(controller.content.fullScale, GraphScale.defaultFloor)
+    }
+
     func testAFailedReadKeepsTheDisplayAsItWas() {
         let script = Script()
         script.readings = [["en0": counters(0, 0, 0)], ["en0": counters(1_024, 0, 1)], [:]]

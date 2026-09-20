@@ -20,8 +20,10 @@ monitor. net-meter does only this.
 ## Using it
 
 The menu bar item shows the upstream rate on the upper line and the downstream
-rate on the lower, with a graph of the last minute beside them: upstream above
-the centre line, downstream below it. A dash means there is no value for this
+rate on the lower, with a graph of the last fourteen seconds beside them — one
+bar per second, moving left as time passes: upstream above the centre line,
+downstream below it. The graph's scale follows the traffic; when a peak scrolls
+out it comes down over a few seconds rather than all at once. A dash means there is no value for this
 second; a dimmed item means the selected interface is not connected. The numbers
 never show another interface in its place.
 

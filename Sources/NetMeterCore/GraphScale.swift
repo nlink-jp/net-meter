@@ -9,6 +9,18 @@ public enum GraphScale {
         return max(floor, peak.isFinite ? peak : 0)
     }
 
+    /// How fast the scale may come down, per sample.
+    public static let easing = 0.8
+
+    /// The scale to draw with, given the one used a sample ago and the one the
+    /// window now calls for. Growing is immediate — a bar must never be clipped.
+    /// Shrinking is eased: when a peak scrolls out of the window, every remaining
+    /// bar would otherwise jump taller in the same instant, which reads as the
+    /// past being rewritten.
+    public static func eased(previous: Double, target: Double) -> Double {
+        target >= previous ? target : max(target, previous * easing)
+    }
+
     /// Height of `value` as a fraction of full scale, clamped to 0...1.
     public static func fraction(of value: Double, fullScale: Double) -> Double {
         guard fullScale > 0, value.isFinite, value > 0 else { return 0 }
