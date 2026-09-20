@@ -27,6 +27,9 @@ Semantic Versioning.
 - Interface labels ("Ethernet (en0)") and the manual selection list: hardware
   ports first in the OS preference order, the rest by name, loopback left out,
   and a manual choice that is currently absent kept in the list.
+- The interface information sources: display names from SystemConfiguration,
+  numeric addresses (IPv4 first, link-local left out) and the OS preference
+  order kept current by `NWPathMonitor`. None needs a permission.
 - The counter reader: one unprivileged `sysctl` per reading, for every interface
   at once. Its tests are live — on the Mac running them, an ordinary second on
   every interface must come out as a rate, never as a reset.
