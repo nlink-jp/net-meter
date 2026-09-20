@@ -24,6 +24,9 @@ Semantic Versioning.
   the first physical interface and never replaces an absent manual choice; rates
   formatted into a number that is never wider than three characters, in bytes or
   bits; and a graph scale shared by both directions with a floor.
+- Interface labels ("Ethernet (en0)") and the manual selection list: hardware
+  ports first in the OS preference order, the rest by name, loopback left out,
+  and a manual choice that is currently absent kept in the list.
 - The counter reader: one unprivileged `sysctl` per reading, for every interface
   at once. Its tests are live — on the Mac running them, an ordinary second on
   every interface must come out as a rate, never as a reset.
