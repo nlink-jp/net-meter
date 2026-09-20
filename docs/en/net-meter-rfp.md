@@ -111,7 +111,8 @@ None. Only OS standard frameworks are used. The app itself makes no network conn
   truncated to 32 bits or is a true 64-bit value, as long as the increase per sample is
   below 4 GiB (see §7). At a 1-second interval this is unambiguous up to about 34 Gbps.
 - A counter wrap is distinguished from a counter reset (a tunnel interface being
-  re-created, wake from sleep, and so on). A sample judged to be a reset is discarded and
+  re-created~~, wake from sleep~~, and so on; 2026-09-20: wake from sleep withdrawn as
+  unmeasured — see Amendments A3 and A2). A sample judged to be a reset is discarded and
   the baseline is re-established. The rule (packet counters going backwards, a cap of
   link speed × elapsed time, and so on) is decided from measurements in Phase 1 and
   recorded in an ADR.
@@ -161,7 +162,8 @@ None. Only OS standard frameworks are used. The app itself makes no network conn
 
 - `NSStatusItem` drawing (three display modes, fixed width, monochrome/colour, the "absent" state).
 - The panel (history graph, current values, interface information, peaks, cumulative transfer, settings).
-- Settings persistence, launch at login, single-instance guard.
+- Settings persistence, launch at login~~, single-instance guard~~.
+  (2026-09-20: the guard was implemented in the scaffold — see Amendment A7)
 - Tune the appearance on a real menu bar (both light and dark, including a notched machine).
 - Measure the resident CPU load.
 
@@ -234,6 +236,76 @@ Consequences for the design:
 - The macOS 26 verification environment is a VM with only a virtual NIC; it has no Wi-Fi
   and no VPN. On macOS 26 only counter behaviour and appearance can be checked. Automatic
   interface selection and behaviour under a VPN are checked on macOS 27 hardware only.
+
+---
+
+## Amendments
+
+The body stays as it was when confirmed; later additions and withdrawals are recorded
+here. A withdrawn statement is struck through in the body.
+
+### 2026-09-20 — Amendments from the independent design review
+
+Right after scaffolding, the design was checked independently against the organization's
+knowledge base and conventions. These are the results; all were settled before development
+Phase 1 began.
+
+**A1. The panel shows the version (addition to §2 Panel)**
+A menu bar app has nothing like `--version`, so unless the version is on screen a user has
+no way to tell which build they are running. The panel shows it verbatim (no prefix or
+suffix stripped) and selectable for copying. When the panel replaces the scaffold's menu,
+the version must not lose its place.
+
+**A2. A sample whose elapsed time is too long is discarded unconditionally (addition to §3 How the data is read)**
+"Correct as long as the increase per sample is below 4 GiB" assumes a bounded sampling
+interval. When a sleep or a stalled timer stretches the interval, the delta modulo 2^32 is
+no longer unambiguous. A sample whose elapsed time exceeds a threshold is discarded and the
+baseline re-established, whatever the counters say. Elapsed time is measured with a clock
+that keeps running while the Mac sleeps; with a clock that stops, a sleep hides inside an
+interval of ordinary length. The threshold is set in Phase 1.
+
+**A3. "A wake from sleep resets the counters" is unmeasured (correction to §3)**
+The body listed wake from sleep as an example of a reset, but it was never measured. What a
+wake does to the counters is a Phase 1 verification item and is treated as a hypothesis
+until then. With A2 in place, the sample after a wake is re-baselined whatever the actual
+behaviour turns out to be.
+
+**A4. First find out whether the values the reset rule needs can be read (addition to §4 Phase 1)**
+The values the candidate rules rely on (packet counters, link speed) have not yet been read
+from an unprivileged process. The OS alters the byte counters before returning them, so
+these cannot be assumed to come through untouched. A spike reads them at the start of
+Phase 1. A link-speed cap alone is not enough: assuming the delta after a reset is spread
+evenly over 4 GiB, a 10GbE cap (1.25 GB per second) accepts roughly three in ten as a
+normal increase.
+
+**A5. The menu bar drawing approach is decided in an ADR at the start of Phase 2 (addition to §3)**
+A template image follows the menu bar's light/dark appearance but cannot carry colour. With
+templating turned off for the coloured mode, the given colours are baked in and nothing
+follows the appearance any more, the digits included. The monochrome default and the
+coloured mode therefore cannot share one naive drawing path. An ADR decides the approach
+(a template image, a title string combined with an image, or a subview that resolves the
+appearance itself); the renderer is a pure "values → image" function, and both appearances
+are checked offscreen.
+
+**A6. The automatic-selection rule is unmeasured under a VPN and is revisited if it fails (supplement to Discussion Log 3)**
+"Take the first Wi-Fi or wired Ethernet interface in preference order" was decided without
+ever looking at the list during a VPN connection. If the tunnel interface does not appear
+with type `other`, or the physical interface drops out of the list, the decision is
+revisited in an ADR. "The same interface is returned more than once" was observed in both
+of two runs (macOS 27.0, wired first, no VPN: `en0` twice, then Wi-Fi).
+
+**A7. The single-instance guard was implemented in the scaffold (correction to §4 Phase 2)**
+The guard covers the assembled `.app` only. A bare `swift run` binary has no bundle
+identifier and starts next to a running `.app` (measured).
+
+**A8. A manually selected interface stays in the panel's selection while it is absent (addition to §2)**
+Removing an absent interface from the list would look as if the user's choice had been
+silently dropped. The selection stays, shown as absent.
+
+**A9. Feeding the knowledge base is not saved up for Phase 3 (correction to §4 Phase 3)**
+The organization's conventions require reusable findings to be fed back as part of the work
+that produced them, not deferred. A finding is fed back once it is settled; Phase 3 only
+confirms that nothing was missed.
 
 ---
 
