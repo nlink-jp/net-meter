@@ -103,3 +103,23 @@ rate of zero.
 
 - RFP §3 "How the data is read", §7 "Counter precision", Amendments A2–A4
 - `spikes/README.md` — measurement code, how to repeat it, observation counts
+
+## Amendments
+
+### 2026-09-20 — What `tooSoon` shows (correcting the last sentence of the Decision)
+
+The Decision ends with "a discarded sample, `baseline` and `tooSoon` reach the display layer
+as 'no value'". For `tooSoon` that is wrong. `tooSoon` means nothing happened as far as this
+reading is concerned: the baseline, the history and the previous outcome all stay where they
+were, so the previous rate stays on display. A second reading arriving within half a second
+is no reason to turn the display into a dash, and the implementation and its test
+(`testTooSoonLeavesBaselineHistoryAndLatestAlone`) pin that behaviour. What reaches the
+display as "no value" is `baseline` and `discarded`.
+
+### 2026-09-20 — When reads keep failing (addition to the Decision)
+
+An empty reading is ignored as a single failure; it is outside the rules. But once reads
+have been failing for more than 3 seconds — the longest interval one sample may span — the
+previous outcome of every interface is dropped and there is "no value". To go on showing the
+last rate would no longer be showing what is happening. The first reading after recovery is
+discarded by rule 3, and rates resume with the one after it.

@@ -8,32 +8,28 @@ Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI popover, macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
-**Development Phase 2 in progress.** The menu bar item is live — two lines of
-rates and a mirrored graph, redrawn every second — and clicking it opens the
-panel: a three-minute history chart, the interface's addresses and link speed,
-peaks, totals since launch, the settings, launch at login, the version and Quit.
-Still open in Phase 2: tuning on the real menu bar, and checking on hardware
-that the panel closes on every kind of outside click and stays open while one of
-its pickers is used. The pure core underneath is in place
-— the rate rule (ADR-0001), the meter with per-interface history, interface
-resolution and the selection list, rate formatting, graph scaling — and
-`NetMeterSystem` asks the OS: counters through `sysctl`, the preference order,
-display names and addresses. Phase 1's code is complete. Still open are checks
-that need a person at the Mac — a wake from sleep, unplugging an adapter,
-switching Wi-Fi/wired, a full-tunnel VPN (a split-tunnel VPN is measured); the
-rules are built to fail safe whatever those show. The display is Phase 2, and it
-starts with the ADR on the drawing approach. The plan
-is in the RFP: Phase 1 is the pure core plus the checks on real systems, Phase 2
-the drawing and the panel, Phase 3 the release.
+The menu bar item shows two lines of rates and a mirrored graph of the last
+minute, redrawn every second. Clicking it opens the panel: a three-minute history
+chart, the interface's addresses and reported link speed, peaks, totals since
+launch, every setting, launch at login, the version and Quit.
+
+What is decided and why lives in the RFP (with its Amendments) and the ADRs; what
+was measured, and how to measure it again, in `spikes/README.md`. This file does
+not track progress — `git log` and `CHANGELOG.md` do.
+
+**Not yet measured** (the rules are built to fail safe whatever these show): a
+wake from sleep, an adapter being unplugged, a switch between Wi-Fi and wired, a
+full-tunnel VPN, a light menu bar with the coloured finish, and a Mac with
+displays of mixed scale.
 
 ## Build & test
 
 - `make build` — compiles the release binary. **Never** run `swift build` for a
   deliverable; the Makefile owns the output location and pins the linked SDK.
 - `make build-app` — assembles `dist/NetMeter.app` (Info.plist version from
-  `git describe`) and signs it with a Developer ID Application identity.
-  Re-signing replaces the bundle: a copy running from `dist/` has to be quit and
-  started again.
+  `git describe`, icon from `assets/AppIcon-1024.png`) and signs it with a
+  Developer ID Application identity. Re-signing replaces the bundle: a copy
+  running from `dist/` has to be quit and started again.
 - `make package` — build-app, then notarize + staple (`nlink-jp-notary` keychain
   profile), and zip to `dist/net-meter-<version>-darwin-arm64.zip`.
 - `make verify-release` — gate: `.notarized` marker, `stapler validate`, and the
@@ -41,67 +37,80 @@ the drawing and the panel, Phase 3 the release.
 - `make brew` — generate the Homebrew cask from the built zip into the local
   `nlink-jp/homebrew-tap` checkout (see `scripts/release-brew.mk`).
 - `make test` — `swift test`, then `scripts/test_check_docs.py`,
-  `spikes/test_analyze_watch.py` and `scripts/check_docs.py`.
+  `spikes/test_analyze_watch.py` and `scripts/check_docs.py`. The
+  `NetMeterSystemTests` are live: they read this Mac's counters, addresses and
+  interface order, take about a second, and need no traffic and no permission.
 - `make run` — `swift run` (debug). **Quit a running copy first.** The
   single-instance guard does not cover this path: a bare binary has no bundle
   identifier, so it starts next to a running `.app` and a second menu bar item
   appears (measured 2026-09-20).
+- `swift scripts/gen-icon.swift` — regenerates `assets/AppIcon-1024.png`.
+
+Opt-in tests that produce something to look at rather than a verdict:
+
+- `NET_METER_PREVIEW_DIR=<dir> swift test --filter "StatusPreviewTests|PanelViewTests"`
+  writes the menu bar item (every state × finish × mode, magnified) and the panel
+  as PNGs. Look at them after any change to drawing or layout: the numeric layout
+  tests passed while the picture showed a truncated address and squeezed pickers.
+- `NET_METER_REPLAY_LOG=<watch log> swift test --filter ReplayTests` replays a
+  recording made by `spikes/watch.swift` through the real `Meter`.
 
 ## Structure
 
 ```
 Sources/
-  NetMeterCore/          Pure, testable logic (no AppKit UI)
-    SingleInstance.swift   singleInstanceDecision() — startup duplicate guard (pids in, decision out)
-    AppVersion.swift       displayVersion(bundleShortVersion:) — what the user is shown, "dev" outside a bundle
-    SymbolName.swift       Every SF Symbol name the app may ask for; the only place a name is spelled
-    Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points, PopoverClick.closesPanel
-    LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval (system state, never persisted by the app)
-    SettingsStore.swift    SettingsStore protocol + the in-memory store tests use (UserDefaults store: NetMeterSystem)
+  NetMeterCore/          Pure logic: no AppKit UI, no OS calls, no clock
     CounterReading.swift   InterfaceCounters (bytes, packets, link speed) and the CounterSource protocol
     RateRule.swift         RateRule.evaluate(previous:current:elapsed:) -> SampleOutcome — ADR-0001, rule by rule
-    Meter.swift            Per-interface baseline, history (nil = no value), totals and peaks; time is passed in, never read
+    Meter.swift            Per-interface baseline, history (nil = no value), totals, peaks, link speed; time is passed in
     RingBuffer.swift       Fixed-capacity history storage
     GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
-    Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate),
-                           GraphWindow: 12 columns x 5 s, the highest rate in each bucket
-    InterfaceCatalog.swift "Ethernet (en0)" labels and the manual selection list (hardware ports first; an absent choice stays listed)
+    InterfaceCatalog.swift "Ethernet (en0)" labels and the selection list (hardware ports first; an absent choice stays listed)
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
-  NetMeterSystem/        The thin layer that asks the OS. No logic worth a unit test lives here
-    SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2: bytes, packets, link speed per interface
+    Display.swift          DisplayMode, AppSettings (string-persisted), MeterReading (absent | waiting | rate),
+                           GraphWindow: 12 columns x 5 s fixed to absolute time, the highest rate in each bucket
+    Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
+                           PopoverClick.closesPanel, PanelToggle.decide
+    LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval
+    SettingsStore.swift    SettingsStore protocol + the in-memory store tests use
+    SymbolName.swift       The one place an SF Symbol name may be spelled (empty: the app draws its own arrows)
+    SingleInstance.swift   singleInstanceDecision() — startup duplicate guard
+    AppVersion.swift       displayVersion(bundleShortVersion:) — verbatim, "dev" outside a bundle
+  NetMeterSystem/        The thin layer that asks the OS
+    SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2. Names are resolved on every read on purpose:
+                               caching index -> name would save about 2 ms a second and risk a stale name after an
+                               interface is re-created
     SystemInterfaceInfoSource.swift  Display names (SystemConfiguration) and numeric addresses (getifaddrs; IPv4 first, no link-local)
-    PathOrderMonitor.swift     NWPathMonitor -> [PathInterface], passed on as given (duplicates and tunnels included)
+    PathOrderMonitor.swift     NWPathMonitor -> [PathInterface], passed on as given; the first update is always delivered
     UserDefaultsSettingsStore.swift  One string per key
     LoginItemService.swift     SMAppService.mainApp, gated on a real bundle; `.notFound` reads as off, not as unavailable
   NetMeterUI/            Drawing and views, as a library so tests can render it offscreen
-    StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish, scale) -> image for button.image; fixed width per mode/unit
+    StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish) -> image with 1x and 2x representations; width by display mode alone
     MeterController.swift  Readings -> what is on display; every OS dependency injected; a setting reaches the display at once
-    PanelModel.swift       PanelSnapshot (a value, settings included) + the one ObservableObject the panel observes
+    PanelModel.swift       PanelSnapshot (a value, settings and the last action's error included) + the one ObservableObject
     PanelView.swift        The SwiftUI panel: fixed width, height from content; Swift Charts history with a fixed window and scale
-    UIStrings.swift        Every user-visible string, one language throughout; also the accessibility value of the item
+    UIStrings.swift        Every user-visible string, one language throughout; a test requires each to be in use
   NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
-    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering,
-                           the popover: content built on open and released on close, makeKey(), click monitors
-Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
-                         ReplayTests is opt-in: NET_METER_REPLAY_LOG=<watch log> replays a recording through the real Meter
-Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
-Tests/NetMeterUITests/   Offscreen, pixel by pixel: width independent of values, no colour in the template finish,
-                         upstream above the centre and downstream below, gaps, dimmed "absent", right-aligned numbers.
-                         PanelViewTests lays the panel out offscreen: width fixed, height from content, no jump between states.
-                         Opt-in: NET_METER_PREVIEW_DIR=<dir> writes the status item sheet and the panel as PNGs to look at
+    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, and the popover:
+                           content built on open and released on close, makeKey(), click monitors, re-anchoring
+Tests/
+  NetMeterCoreTests/     Pure. ReplayTests is opt-in
+  NetMeterSystemTests/   Live, against this Mac
+  NetMeterUITests/       Offscreen: the status item pixel by pixel, the panel through the real layout engine,
+                         the controller and the panel snapshot with scripted sources
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
                          Vendored byte-identical from nlink-jp/.github/templates — never edit here
   make-icns.sh           1024px PNG -> AppIcon.icns
+  gen-icon.swift         Draws assets/AppIcon-1024.png
   check_docs.py          Links resolve; en/ja mirrors exist and name the same identifiers; no retired name in use
   test_check_docs.py     Shows each of those rules failing on a fixture tree
-spikes/                  Measurement code the design rests on. Not part of the package, never shipped
-                         counters.swift (one bracketable reading), watch.swift (per-second JSON log),
-                         analyze_watch.py + its tests, path_order.swift
-docs/{en,ja}/            RFP; ADRs go in docs/{en,ja}/adr/ (4-digit number + slug, org ADR header with `Binds: net-meter`)
-assets/                  AppIcon-1024.png goes here (absent: the app builds without an icon)
+spikes/                  Measurement code the design rests on. Not part of the package, never shipped:
+                         counters.swift, watch.swift, analyze_watch.py + tests, path_order.swift, status_appearance.swift
+docs/{en,ja}/            RFP; ADRs in docs/{en,ja}/adr/ (4-digit number + slug, org ADR header with `Binds: net-meter`)
+assets/                  AppIcon-1024.png
 Info.plist               Bundle template at the repo root (${VERSION}, ${BUNDLE_ID}, ${APP_NAME} substituted by `make build-app`)
 ```
 
@@ -148,9 +157,9 @@ Info.plist               Bundle template at the repo root (${VERSION}, ${BUNDLE_
   non-empty display through a pure, tested function. The app never silently
   shows a different interface's numbers under a manual selection, and a manual
   selection that is absent stays listed as the selection in the panel.
-- **The version is always on screen somewhere.** A menu bar app has no
-  `--version`. The scaffold's menu shows it; the panel that replaces the menu has
-  to show it too, verbatim and selectable.
+- **The version is always on screen.** A menu bar app has no `--version`. It is
+  at the bottom of the panel, verbatim and selectable; whatever replaces the
+  panel's footer has to keep it.
 - **The release build pins the linked SDK.** macOS decides which generation of
   window chrome to draw from `LC_BUILD_VERSION`'s sdk field, and the Xcode 27 /
   Swift 6.4 `swift build` stamps it with the deployment target, not the SDK it
@@ -192,19 +201,20 @@ building the thing it is about.
   label is a static image updated on state change; it suits neither a custom
   two-line layout nor a per-second redraw. (KB: "連続アニメするメニューバー
   アイコンは NSStatusItem で")
-- **Template rendering and colour exclude each other, and the drawing approach is
-  not chosen yet.** `isTemplate` is honoured only in `button.image` — an image
-  inside an attributed title keeps the colour it was given and ignores the menu
-  bar's appearance. A template image follows the menu bar but cannot carry
-  colour; with `isTemplate = false` the given colours are baked in and nothing
-  follows the appearance any more, the digits included. So the monochrome default
-  and the coloured mode cannot share one naive path. Decide the approach in an
-  ADR at the start of Phase 2, make the renderer a pure "values → image"
-  function, and check both appearances offscreen. (KB: "メニューバーのアイコンは
-  `button.image` に入れる")
-- **The status item's width is fixed.** Monospaced, right-aligned digits in a
-  fixed-length item; otherwise every change in digit count shifts the
-  neighbouring icons. A panel's height, by contrast, is never fixed from today's
+- **Template rendering and colour exclude each other; ADR-0002 is how both are
+  served.** `isTemplate` is honoured only in `button.image` — an image inside an
+  attributed title keeps the colour it was given and ignores the menu bar's
+  appearance. A template image follows the menu bar but cannot carry colour; with
+  `isTemplate = false` the given colours are baked in and nothing follows the
+  appearance any more, the digits included. So one pure renderer has two
+  finishes, and the coloured one takes its foreground from the button's
+  `effectiveAppearance` — which reports the menu bar's own appearance, not the
+  system's (measured once: `VibrantDark` under a light system). (KB: "メニューバーの
+  アイコンは `button.image` に入れる")
+- **The status item's width depends on the display mode alone.** Monospaced,
+  right-aligned digits in a fixed-length item, with room reserved for the widest
+  unit label of either unit system; otherwise every change in digit count — or a
+  switch between bytes and bits — shifts the neighbouring icons. A panel's height, by contrast, is never fixed from today's
   content. (KB: "ビューの寸法を「今日の中身」で測って固定しない")
 - **The panel takes key status on open, and outside clicks are watched
   explicitly — two separate needs.** A status item click does not activate an
@@ -261,9 +271,11 @@ building the thing it is about.
   setting is a toggle (monochrome / coloured), not a picker. (load-spinner
   AGENTS.md)
 - **SF Symbol names live in `SymbolName` and nowhere else.** A name that does not
-  exist yields a nil image with no error. `SymbolNameTests` resolves every listed
-  name and fails if an app source spells one as a literal; the fallback for a nil
-  image is a visible text title. (KB: "SF Symbol 名は実在を検証してから使う")
+  exist yields a nil image with no error. The app draws its own arrows and uses no
+  symbol today, so the list is empty; `SymbolNameTests` resolves whatever is
+  listed and fails if an app source spells a name as a literal in any of the
+  three spellings (`systemSymbolName:`, `systemName:`, `systemImage:`). (KB: "SF
+  Symbol 名は実在を検証してから使う")
 - **`NWPathMonitor.availableInterfaces` can list the same interface more than
   once.** Seen in both of two runs (macOS 27.0, wired Ethernet first, no VPN:
   `en0` twice, then Wi-Fi). De-duplicate before taking "the first physical
@@ -292,6 +304,24 @@ building the thing it is about.
 - **The macOS 26 verification environment is a VM** with a virtual NIC only — no
   Wi-Fi, no VPN. It can confirm counter behaviour and appearance; interface
   selection and behaviour under a VPN are checked on macOS 27 hardware only.
+- **The answer to an action and the polled state are different fields.** Launch
+  at login is re-read from the OS every second; an error stored alongside it
+  would be wiped before anyone could read it. `PanelSnapshot.loginItemError` is
+  held by the app delegate until the next attempt or until the panel closes, and
+  shown where the toggle is. A toggle that springs back without a word is the
+  worst outcome. (KB: "操作の返事とポーリングの結果を同じフィールドに置かない")
+- **Replacing a piece of UI means sweeping what it left behind, in the same
+  commit.** The interim settings menu was replaced by the panel and left three
+  strings, a symbol and a catalogue field unused; a reviewer found them, not a
+  test. `UIStringsTests` now fails for a string nothing uses, and a withdrawn
+  mechanism's name goes into `RETIRED` in `scripts/check_docs.py`.
+- **Graph buckets are fixed to absolute time.** Measured back from `now`, each
+  sample crossed a bucket edge at a moment set by its own phase, and two bursts
+  seven seconds apart sat one column apart on some ticks and two on others.
+- **Converting an unbounded `Double` to `Int` traps.** Compare or clamp as a
+  `Double` first. No real rate gets there; a test with an absurd input does.
+- **Re-anchor the popover when the item's width changes.** Display mode is changed
+  from inside the panel, which resizes the very item the panel points at.
 - **Single instance covers the bundle, not the bare binary.**
   `LSMultipleInstancesProhibited` stops LaunchServices launches;
   `singleInstanceDecision` stops direct exec of the bundled binary and `open -n`

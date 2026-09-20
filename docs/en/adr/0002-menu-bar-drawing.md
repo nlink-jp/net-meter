@@ -79,3 +79,17 @@ scale of 1x (non-Retina).
 - RFP §2 "Menu bar display", Amendment A5
 - `spikes/status_appearance.swift`
 - Org knowledge base, macos-gui: "put the menu bar icon in `button.image`"
+
+## Amendments
+
+### 2026-09-20 — Display scale and width (supplement to Decisions 4 and 5)
+
+Decision 4 said to draw at the real display scale, but an image drawn at one scale only is
+interpolated — blurred — on one of the displays of a Mac that has both a Retina and a 1x
+display. The image carries **both a 1x and a 2x representation**, each aligned to the pixel
+grid of its own scale, and AppKit picks per screen. This has not yet been checked on a Mac
+with mixed displays.
+
+Decision 5's "the unit field reserves the longest unit" is implemented as **the longest
+across both unit systems**, bytes and bits. The first implementation looked at the selected
+unit system only, and switching units changed the width by 2 pt.

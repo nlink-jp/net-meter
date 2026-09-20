@@ -8,46 +8,41 @@ Semantic Versioning.
 
 ### Added
 
-- Project scaffold: a menu bar item with a placeholder symbol, and a menu that
-  shows the version and quits.
+- The menu bar item: the upstream and downstream rate of one network interface
+  as two lines of numbers with solid arrows, and a mirrored graph of the last
+  minute in twelve five-second bars — upstream above the centre line, downstream
+  below it. Its width depends on the display mode alone, so neighbouring items do
+  not move when the digits or the unit change. Monochrome as a template image,
+  so it takes the menu bar's own colour like the system's items; or coloured,
+  with a foreground chosen from the menu bar the item reports (ADR-0002). Drawn
+  pixel-aligned for 1x and 2x displays. A second without a value is a dash, never
+  a zero; an interface that is not there dims the whole item.
+- The panel behind it: a three-minute history chart with a fixed window and one
+  scale for both directions, the interface's addresses and reported link speed,
+  peaks, totals since launch, every setting, launch at login, and the version —
+  selectable, at the bottom. Its content exists only while it is open. Outside
+  clicks close it even where macOS's own transient behaviour misses them, and a
+  failed attempt to change launch at login is reported where the toggle is.
+- Interface selection: automatic — the first physical link in macOS's preference
+  order, which keeps showing the link itself while a VPN is up (measured with a
+  split tunnel) — or any interface by hand. A manual choice that is absent is
+  shown as absent and stays in the list; another interface is never shown in its
+  place.
+- Display modes (numbers and graph, numbers only, graph only), bytes or bits per
+  second with SI prefixes, colour on or off. Settings are saved in UserDefaults
+  and take effect at once.
+- The rule that turns two counter readings into a rate, or into the reason there
+  is none (ADR-0001). macOS hands an ordinary app byte counters truncated to 32
+  bits and floored to 1 KiB, in 64-bit fields (measured on macOS 26 and 27), so
+  deltas are taken modulo 2^32; samples after a stretched interval — a sleep —
+  are discarded unseen; a counter reset is told from a wrap by the packet
+  counters, not by the reported link speed, which was measured not to be a
+  ceiling. An hour of recorded use with at least three real wraps replayed
+  without one sample misjudged.
+- No permission of any kind: no privacy grant, no entitlement, no administrator
+  rights, and no network connection of its own. About 0.3% CPU while resident.
 - A single-instance guard, so a second copy exits instead of stacking a second
   menu bar item.
 - `make test` checks the documents as well as the code: relative links resolve,
-  every English document has its Japanese mirror, and each pair names the same
-  flags, make targets and snake_case identifiers.
-- The rule that turns two counter readings into a rate, or into the reason there
-  is none (ADR-0001): deltas modulo 2^32, samples after a stretched interval
-  discarded, and counter resets told apart from wraps by the packet counters
-  rather than the reported link speed. Not wired to the display yet.
-- The rest of the pure core: a meter that keeps a baseline, a history, running
-  totals and peaks for every interface at once; automatic selection that takes
-  the first physical interface and never replaces an absent manual choice; rates
-  formatted into a number that is never wider than three characters, in bytes or
-  bits; and a graph scale shared by both directions with a floor.
-- The panel behind the menu bar item: a three-minute history chart with a fixed
-  window and a scale shared by both directions, the interface's addresses and
-  reported link speed, peaks, totals since launch, all settings, launch at
-  login, and the version — selectable, at the bottom. Its content exists only
-  while it is open, and outside clicks close it even where macOS's own
-  transient behaviour misses them.
-- The live menu bar meter: counters read once a second, shown as rates and a
-  graph; settings for the interface, the display mode, the unit and colour,
-  saved in UserDefaults and applied at once. About 0.3% CPU
-  while resident (measured on an M-series Mac over 30 seconds).
-- The menu bar image (ADR-0002): two lines of numbers with solid arrows and a
-  mirrored graph of twelve five-second bars, at a width that depends only on the
-  display mode, monochrome as a template image
-  or coloured to suit the menu bar the button reports, pixel-aligned at 1x and
-  2x, with "no value" drawn as a dash and "absent" dimmed.
-- Interface labels ("Ethernet (en0)") and the manual selection list: hardware
-  ports first in the OS preference order, the rest by name, loopback left out,
-  and a manual choice that is currently absent kept in the list.
-- The interface information sources: display names from SystemConfiguration,
-  numeric addresses (IPv4 first, link-local left out) and the OS preference
-  order kept current by `NWPathMonitor`. None needs a permission.
-- The counter reader: one unprivileged `sysctl` per reading, for every interface
-  at once. Its tests are live — on the Mac running them, an ordinary second on
-  every interface must come out as a rate, never as a reset.
-- Every SF Symbol name the app uses is listed in one place and resolved by a
-  test, so a name that does not exist fails the build instead of leaving an
-  invisible menu bar item.
+  every English document has its Japanese mirror, each pair names the same
+  identifiers, no withdrawn name is still in use, and every UI string is used.

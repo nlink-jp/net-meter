@@ -23,7 +23,11 @@ import sys
 from pathlib import Path
 
 # name -> why it is retired, printed when it reappears
-RETIRED: dict[str, str] = {}
+RETIRED: dict[str, str] = {
+    "statusPlaceholder": "the scaffold's placeholder symbol went when the item started drawing rates",
+    "automaticChoice": "a string of the interim settings menu, which the panel replaced",
+    "menuNeedsUpdate": "the interim settings menu was replaced by the panel",
+}
 
 SEARCHED_DIRS = ("Sources", "Tests", "docs", "spikes")
 # The Makefile is here for BREW_DESC: the cask description is text a user reads.

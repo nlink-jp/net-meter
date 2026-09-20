@@ -67,6 +67,8 @@ make run
 ## ドキュメント
 
 - [RFP](docs/ja/net-meter-rfp.ja.md) — スコープ、挙動、その背景にある設計判断
+- [ADR-0001](docs/ja/adr/0001-counter-readings-to-rates.ja.md) — カウンタの読み取りを速度に変える規則と、サンプルを捨てる条件
+- [ADR-0002](docs/ja/adr/0002-menu-bar-drawing.ja.md) — メニューバー項目の描画方式
 - [スパイク](spikes/README.md) — 設計の根拠になった実測
 
 ## ライセンス

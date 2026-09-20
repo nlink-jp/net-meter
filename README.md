@@ -69,6 +69,8 @@ menu bar item appears.
 ## Documentation
 
 - [RFP](docs/en/net-meter-rfp.md) — scope, behaviour and the design decisions behind them
+- [ADR-0001](docs/en/adr/0001-counter-readings-to-rates.md) — how counter readings become rates, and when a sample is thrown away
+- [ADR-0002](docs/en/adr/0002-menu-bar-drawing.md) — how the menu bar item is drawn
 - [Spikes](spikes/README.md) — the measurements the design rests on
 
 ## License
