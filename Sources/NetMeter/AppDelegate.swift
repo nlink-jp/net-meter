@@ -81,6 +81,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // non-activating panel is told nothing, stays where it was — out of sight
         // after a Space change — and the next click on the item would close a panel
         // nobody can see. Both go down the one close path.
+        center.addObserver(self, selector: #selector(itemWindowMoved), name: NSWindow.didMoveNotification, object: nil)
+
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(userWentElsewhere), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         workspace.addObserver(self, selector: #selector(anotherAppCameForward), name: NSWorkspace.didActivateApplicationNotification, object: nil)
@@ -111,16 +113,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let content = controller.content
         let width = StatusRenderer.size(mode: content.mode).width
         if item.length != width {
-            item.length = width
             // Changing the display mode from inside the panel resizes the item the
-            // panel hangs from. The item's window has not moved yet at this point,
-            // so the panel is placed again on the next turn of the run loop.
-            if panelOpen {
-                DispatchQueue.main.async { [weak self] in
-                    guard let self, self.panelOpen else { return }
-                    self.placePanel()
-                }
-            }
+            // panel hangs from. Nothing is placed here: see `itemWindowMoved`.
+            item.length = width
         }
 
         // ADR-0002: the button reports the menu bar's own appearance, which can
@@ -219,6 +214,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateGate.reset()
         }
         syncClickMonitors()
+    }
+
+    /// The panel follows the item's window. Setting the item's length resizes that
+    /// window at once but leaves it where it was, its right edge in the wrong place;
+    /// the menu bar puts it right 29–41 ms later and this notification follows
+    /// (measured, three changes out of three). Placing on the next turn of the run
+    /// loop read the in-between frame and left the panel up to 57 pt off. The same
+    /// notification covers an item pushed along by its neighbours coming and going.
+    @objc private func itemWindowMoved(_ note: Notification) {
+        guard panelOpen, let window = note.object as? NSWindow, window === statusItem?.button?.window else { return }
+        placePanel()
     }
 
     /// Below the status item, within the screen the item is on.
@@ -384,6 +390,21 @@ enum Trace {
             return event
         }
         monitors = [global, local].compactMap { $0 }
+
+        // Where the item's window is, and when it gets there, after the item's
+        // length changes — the panel hangs from it.
+        for (name, label) in [(NSWindow.didMoveNotification, "ITEMWIN moved"), (NSWindow.didResizeNotification, "ITEMWIN resized")] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak delegate] note in
+                let window = note.object as? NSWindow
+                MainActor.assumeIsolated {
+                    guard let delegate, let window, window === delegate.traceItemWindow else { return }
+                    log("\(label) item=\(delegate.traceItemFrameText)")
+                }
+            })
+        }
+        if ProcessInfo.processInfo.environment["NET_METER_TRACE_CYCLE"] != nil {
+            delegate.traceCycleDisplayModes()
+        }
     }
 
     static func log(_ message: String) {
@@ -394,6 +415,38 @@ enum Trace {
 }
 
 extension AppDelegate {
+    var traceItemWindow: NSWindow? { statusItem?.button?.window }
+    var traceItemFrameText: String {
+        guard let frame = traceItemFrame else { return "nil" }
+        return "x=\(Int(frame.minX))..\(Int(frame.maxX)) w=\(Int(frame.width))"
+    }
+
+    /// `NET_METER_TRACE_CYCLE`: goes through the display modes and back to the one
+    /// in use, without the panel and without a click, and records where the item's
+    /// window is at several moments after each change.
+    func traceCycleDisplayModes() {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard let self, let controller = self.controller else { return }
+            let original = controller.settings.displayMode
+            for mode in DisplayMode.allCases.filter({ $0 != original }) + [original] {
+                Trace.log("CYCLE   before mode=\(controller.settings.displayMode) item=\(self.traceItemFrameText)")
+                var settings = controller.settings
+                settings.displayMode = mode
+                controller.settings = settings
+                let changed = ContinuousClock().now
+                Trace.log("CYCLE   set mode=\(mode) item=\(self.traceItemFrameText)")
+                DispatchQueue.main.async { Trace.log("CYCLE   next-turn item=\(self.traceItemFrameText)") }
+                for ms in [20, 50, 100, 200, 400, 800, 1600] {
+                    try? await Task.sleep(until: changed + .milliseconds(ms), clock: .continuous)
+                    Trace.log("CYCLE   +\(ms)ms item=\(self.traceItemFrameText)")
+                }
+                try? await Task.sleep(for: .milliseconds(900))
+            }
+            Trace.log("CYCLE   done")
+        }
+    }
+
     func traceMouse(_ source: String, type: UInt, number: Int, location: CGPoint) {
         let frame = traceItemFrame
         let onItem = statusItemOwns(location, itemWindowFrame: frame)

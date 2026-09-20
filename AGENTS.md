@@ -430,10 +430,18 @@ building the thing it is about.
   IPv6 address needs up to 265 pt and was cut in the middle. Addresses now get
   the panel's full width in a monospaced font, and a test measures the 39-character
   worst case against the width. The previews and tests use that address too.
-- **Place the panel again when the item's width changes.** Display mode is changed
-  from inside the panel, which resizes the very item the panel hangs from. The
-  item's window has not moved yet when its length is set, so the placement waits
-  for the next turn of the run loop.
+- **The panel follows the item's window by `NSWindow.didMoveNotification` — not
+  by waiting.** Display mode is changed from inside the panel, which resizes the
+  very item the panel hangs from. Setting `length` resizes the item's window at
+  once but leaves its origin where it was, so its right edge is wrong; the menu
+  bar moves it back 29–41 ms later and the notification follows (three changes
+  out of three; `NET_METER_TRACE_CYCLE=1` on the diagnostic build repeats the
+  measurement with no click and no panel). What was tried first: placing again on
+  the next turn of the run loop. That read the in-between frame and left the
+  panel 56–57 pt to the right after going from graph only back to numbers and
+  graph (same mode, x 2102 on open and 2159 after the change, twice) — flagged as
+  unmeasured by the pre-release review and then measured. A delay instead of the
+  notification would be the same guess with a bigger number.
 - **Single instance covers the bundle, not the bare binary.**
   `LSMultipleInstancesProhibited` stops LaunchServices launches;
   `singleInstanceDecision` stops direct exec of the bundled binary and `open -n`
