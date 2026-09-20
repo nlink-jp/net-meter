@@ -4,7 +4,6 @@ import XCTest
 
 final class SymbolNameTests: XCTestCase {
     func testEveryListedSymbolResolves() {
-        XCTAssertFalse(SymbolName.all.isEmpty)
         for name in SymbolName.all {
             XCTAssertNotNil(
                 NSImage(systemSymbolName: name, accessibilityDescription: nil),
@@ -37,7 +36,11 @@ final class SymbolNameTests: XCTestCase {
             files += found
         }
 
-        let literal = try NSRegularExpression(pattern: #"system(Symbol)?Name:\s*""#)
+        // AppKit's `systemSymbolName:`, and SwiftUI's `systemName:` and `systemImage:`.
+        let literal = try NSRegularExpression(pattern: #"system(SymbolName|Name|Image):\s*""#)
+        for spelling in [#"NSImage(systemSymbolName: "x""#, #"Image(systemName: "x")"#, #"Label("Quit", systemImage: "power")"#] {
+            XCTAssertNotNil(literal.firstMatch(in: spelling, range: NSRange(spelling.startIndex..., in: spelling)), spelling)
+        }
         for file in files {
             let text = try String(contentsOf: file, encoding: .utf8)
             let range = NSRange(text.startIndex..., in: text)

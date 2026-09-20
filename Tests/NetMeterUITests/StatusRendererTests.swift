@@ -40,7 +40,7 @@ final class StatusRendererTests: XCTestCase {
     }
 
     private func graphX(mode: DisplayMode = .numbersAndGraph, unit: RateUnit = .bytes) -> ClosedRange<CGFloat> {
-        let right = StatusRenderer.size(mode: mode, unit: unit).width - StatusRenderer.padding
+        let right = StatusRenderer.size(mode: mode).width - StatusRenderer.padding
         return (right - StatusRenderer.graphWidth)...right
     }
 
@@ -55,19 +55,21 @@ final class StatusRendererTests: XCTestCase {
 
     // MARK: the width never depends on the values
 
-    func testWidthDependsOnTheModeAndUnitSystemOnly() {
+    func testWidthDependsOnTheDisplayModeAlone() {
         let readings: [MeterReading] = [.absent, .waiting, .rate(down: 0, up: 0), .rate(down: 244_000, up: 2_400_000),
                                         .rate(down: 999_400, up: 999_500_000), .rate(down: 1e13, up: 1e13)]
-        for mode in DisplayMode.allCases { for unit in RateUnit.allCases {
-            let widths = Set(readings.map { render($0, mode: mode, unit: unit).wide })
-            XCTAssertEqual(widths.count, 1, "\(mode) \(unit): widths \(widths)")
-        } }
+        for mode in DisplayMode.allCases {
+            // Every value, every state, and both unit systems: switching bytes to
+            // bits must not move the neighbouring items either.
+            let widths = Set(RateUnit.allCases.flatMap { unit in readings.map { render($0, mode: mode, unit: unit).wide } })
+            XCTAssertEqual(widths.count, 1, "\(mode): widths \(widths)")
+        }
     }
 
     func testEachDisplayModeHasItsOwnWidth() {
-        let both = StatusRenderer.size(mode: .numbersAndGraph, unit: .bytes).width
-        let numbers = StatusRenderer.size(mode: .numbersOnly, unit: .bytes).width
-        let graph = StatusRenderer.size(mode: .graphOnly, unit: .bytes).width
+        let both = StatusRenderer.size(mode: .numbersAndGraph).width
+        let numbers = StatusRenderer.size(mode: .numbersOnly).width
+        let graph = StatusRenderer.size(mode: .graphOnly).width
         XCTAssertEqual(graph, StatusRenderer.graphWidth + StatusRenderer.padding * 2)
         XCTAssertGreaterThan(numbers, graph)
         XCTAssertEqual(both, numbers + StatusRenderer.textGraphGap + StatusRenderer.graphWidth)
@@ -75,7 +77,7 @@ final class StatusRendererTests: XCTestCase {
     }
 
     func testPixelSizeFollowsTheDisplayScale() {
-        let size = StatusRenderer.size(mode: .numbersAndGraph, unit: .bytes)
+        let size = StatusRenderer.size(mode: .numbersAndGraph)
         for scale in [CGFloat(1), 2] {
             let pixels = render(.rate(down: 1, up: 1), scale: scale)
             XCTAssertEqual(pixels.wide, Int(size.width * scale))
@@ -95,8 +97,16 @@ final class StatusRendererTests: XCTestCase {
 
     func testImageIsMarkedAsATemplateOnlyInTheTemplateFinish() {
         let content = StatusContent(reading: .waiting, columns: [], mode: .numbersOnly, unit: .bytes)
-        XCTAssertTrue(StatusRenderer.image(content: content, finish: .template, scale: 1).isTemplate)
-        XCTAssertFalse(StatusRenderer.image(content: content, finish: .coloured(darkMenuBar: true), scale: 1).isTemplate)
+        XCTAssertTrue(StatusRenderer.image(content: content, finish: .template).isTemplate)
+        XCTAssertFalse(StatusRenderer.image(content: content, finish: .coloured(darkMenuBar: true)).isTemplate)
+    }
+
+    func testTheImageCarriesA1xAndA2xRepresentationSoNeitherKindOfDisplayIsInterpolated() {
+        let content = StatusContent(reading: .rate(down: 1, up: 1), columns: [], mode: .numbersAndGraph, unit: .bytes)
+        let image = StatusRenderer.image(content: content, finish: .template)
+        let size = StatusRenderer.size(mode: .numbersAndGraph)
+        XCTAssertEqual(image.size, size)
+        XCTAssertEqual(image.representations.map(\.pixelsWide).sorted(), [Int(size.width), Int(size.width) * 2])
     }
 
     func testColouredForegroundFollowsTheMenuBar() {

@@ -9,8 +9,7 @@ public enum UIStrings {
     public static let display = "Display"
     public static let unit = "Unit"
     public static let colour = "Colour up and down"
-    public static let otherInterfaces = "Other Interfaces"
-    public static let quit = "Quit net-meter"
+    public static let otherInterfaces = "Other interfaces"
     public static let noInterface = "No network interface"
 
     public static func displayMode(_ mode: DisplayMode) -> String {
@@ -29,7 +28,6 @@ public enum UIStrings {
     }
 
     public static func absent(_ label: String) -> String { "\(label) — not connected" }
-    public static func automaticChoice(_ label: String) -> String { "\(label) — automatic" }
     public static func version(_ version: String) -> String { "net-meter \(version)" }
 
     // The panel
@@ -41,6 +39,7 @@ public enum UIStrings {
     public static let launchAtLogin = "Launch at login"
     public static let approveLoginItem = "Approve in System Settings › Login Items"
     public static let loginItemUnavailable = "Available when running from the app bundle"
+    public static func loginItemFailed(_ reason: String) -> String { "Could not change it: \(reason)" }
     public static let quitShort = "Quit"
     public static let none = "—"
     public static let measuring = "Measuring…"

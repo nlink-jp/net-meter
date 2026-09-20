@@ -16,11 +16,16 @@ public struct PanelSnapshot: Equatable, Sendable {
     public var settings: AppSettings
     public var entries: [InterfaceListEntry]
     public var loginItem: LoginItemState
+    /// Why the last attempt to change launch at login failed. Kept apart from
+    /// `loginItem`: that is re-read from the OS every second, and an error stored
+    /// with it would be wiped before anyone could read it.
+    public var loginItemError: String?
     public var version: String
 
     public init(heading: String, isAutomatic: Bool, reading: MeterReading, addresses: [String], linkSpeed: String,
                 peakDown: Double, peakUp: Double, totals: TransferTotals, points: [ChartPoint], fullScale: Double,
-                settings: AppSettings, entries: [InterfaceListEntry], loginItem: LoginItemState, version: String) {
+                settings: AppSettings, entries: [InterfaceListEntry], loginItem: LoginItemState,
+                loginItemError: String? = nil, version: String) {
         self.heading = heading
         self.isAutomatic = isAutomatic
         self.reading = reading
@@ -34,6 +39,7 @@ public struct PanelSnapshot: Equatable, Sendable {
         self.settings = settings
         self.entries = entries
         self.loginItem = loginItem
+        self.loginItemError = loginItemError
         self.version = version
     }
 }
@@ -61,6 +67,7 @@ extension MeterController {
         info: [String: InterfaceInfo],
         pathOrder: [PathInterface],
         loginItem: LoginItemState,
+        loginItemError: String? = nil,
         version: String,
         now: Double
     ) -> PanelSnapshot {
@@ -99,6 +106,7 @@ extension MeterController {
             entries: InterfaceCatalog.entries(available: meter.availableInterfaces, info: info,
                                               pathOrder: pathOrder, selection: settings.selection),
             loginItem: loginItem,
+            loginItemError: loginItemError,
             version: version
         )
     }

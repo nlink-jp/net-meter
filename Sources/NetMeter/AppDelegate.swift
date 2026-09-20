@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var clickMonitors: [Any] = []
     /// When a click monitor last closed the panel, on the `now` clock.
     private var monitorClosedAt: Double?
+    /// Why launch at login could not be changed; shown until the next attempt or
+    /// until the panel closes.
+    private var loginItemError: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         activity = ProcessInfo.processInfo.beginActivity(
@@ -79,14 +82,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func render() {
         guard let controller, let item = statusItem, let button = item.button else { return }
         let content = controller.content
-        item.length = StatusRenderer.size(mode: content.mode, unit: content.unit).width
+        let width = StatusRenderer.size(mode: content.mode).width
+        if item.length != width {
+            item.length = width
+            // Changing the display mode from inside the panel resizes the item the
+            // panel is anchored to; re-anchor so the arrow keeps pointing at it.
+            if popover.isShown { popover.positioningRect = button.bounds }
+        }
 
         // ADR-0002: the button reports the menu bar's own appearance, which can
         // differ from the system's.
         let dark = button.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let finish: StatusFinish = controller.settings.coloured ? .coloured(darkMenuBar: dark) : .template
-        let scale = button.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        button.image = StatusRenderer.image(content: content, finish: finish, scale: scale)
+        button.image = StatusRenderer.image(content: content, finish: finish)
         button.setAccessibilityLabel("net-meter")
         button.setAccessibilityValue(UIStrings.spoken(content.reading, unit: content.unit))
 
@@ -102,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             info: infoSource.info(),
             pathOrder: pathMonitor.current,
             loginItem: loginItem.state,
+            loginItemError: loginItemError,
             version: displayVersion(
                 bundleShortVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
             ),
@@ -132,8 +141,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             do {
                 try self.loginItem.set(on)
+                self.loginItemError = nil
             } catch {
-                NSLog("net-meter: launch at login could not be changed: \(error.localizedDescription)")
+                self.loginItemError = error.localizedDescription
             }
             self.panelModel?.snapshot = self.snapshot()
         }
@@ -203,5 +213,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         removeClickMonitors()
         popover.contentViewController = nil
         panelModel = nil
+        loginItemError = nil
     }
 }

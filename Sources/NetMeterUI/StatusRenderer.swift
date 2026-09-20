@@ -26,8 +26,9 @@ public enum StatusFinish: Equatable, Sendable {
 }
 
 /// ADR-0002: one pure function from "values to show + finish" to an image for
-/// `NSStatusItem.button.image`. The width depends on the display mode and the
-/// unit system only — never on the values — so neighbouring items do not move.
+/// `NSStatusItem.button.image`. The width depends on the display mode alone —
+/// never on the values, and not on the unit either — so neighbouring items move
+/// only when the user changes what the item shows.
 @MainActor
 public enum StatusRenderer {
     public static let height: CGFloat = 22
@@ -57,18 +58,20 @@ public enum StatusRenderer {
         width(of: String(repeating: "9", count: RateFormatter.numberWidth))
     }
 
-    static func unitFieldWidth(_ unit: RateUnit) -> CGFloat {
-        RateFormatter.units(for: unit).map(width(of:)).max() ?? 0
+    /// Room for the widest unit label of either unit system, so that switching
+    /// between bytes and bits does not move the neighbouring items.
+    static func unitFieldWidth() -> CGFloat {
+        RateUnit.allCases.flatMap(RateFormatter.units(for:)).map(width(of:)).max() ?? 0
     }
 
-    static func textBlockWidth(_ unit: RateUnit) -> CGFloat {
-        arrowWidth + numberFieldWidth() + numberUnitGap + unitFieldWidth(unit)
+    static func textBlockWidth() -> CGFloat {
+        arrowWidth + numberFieldWidth() + numberUnitGap + unitFieldWidth()
     }
 
-    /// The size of the image, in points, for a display mode and unit system.
-    public static func size(mode: DisplayMode, unit: RateUnit) -> NSSize {
+    /// The size of the image, in points, for a display mode.
+    public static func size(mode: DisplayMode) -> NSSize {
         var width = padding * 2
-        if mode.showsNumbers { width += textBlockWidth(unit) }
+        if mode.showsNumbers { width += textBlockWidth() }
         if mode.showsNumbers && mode.showsGraph { width += textGraphGap }
         if mode.showsGraph { width += graphWidth }
         return NSSize(width: ceil(width), height: height)
@@ -76,10 +79,15 @@ public enum StatusRenderer {
 
     // MARK: drawing
 
-    public static func image(content: StatusContent, finish: StatusFinish, scale: CGFloat) -> NSImage {
-        let bitmap = bitmap(content: content, finish: finish, scale: scale)
-        let image = NSImage(size: bitmap.size)
-        image.addRepresentation(bitmap)
+    /// The image carries a 1x and a 2x representation, each drawn pixel-aligned
+    /// for its own scale, and AppKit picks per screen. With a single
+    /// representation, a Mac with one Retina and one 1x display would show an
+    /// interpolated — blurred — item on one of them.
+    public static func image(content: StatusContent, finish: StatusFinish) -> NSImage {
+        let image = NSImage(size: size(mode: content.mode))
+        for scale in [CGFloat(1), 2] {
+            image.addRepresentation(bitmap(content: content, finish: finish, scale: scale))
+        }
         image.isTemplate = finish == .template
         return image
     }
@@ -87,7 +95,7 @@ public enum StatusRenderer {
     /// The pixels themselves; `image` wraps this. Tests read it directly.
     public static func bitmap(content: StatusContent, finish: StatusFinish, scale: CGFloat) -> NSBitmapImageRep {
         let scale = max(1, scale.rounded())
-        let size = size(mode: content.mode, unit: content.unit)
+        let size = size(mode: content.mode)
         let bitmap = NSBitmapImageRep(
             bitmapDataPlanes: nil,
             pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
@@ -104,7 +112,7 @@ public enum StatusRenderer {
         var x = padding
         if content.mode.showsNumbers {
             drawNumbers(content, at: x, palette: palette)
-            x += textBlockWidth(content.unit) + textGraphGap
+            x += textBlockWidth() + textGraphGap
         }
         if content.mode.showsGraph {
             drawGraph(content, at: x, scale: scale, palette: palette)

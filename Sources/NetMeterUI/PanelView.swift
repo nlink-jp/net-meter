@@ -170,8 +170,18 @@ public struct PanelView: View {
                 Picker("", selection: binding(\.selection.storedValue) { $0.selection = InterfaceSelection(storedValue: $1) }) {
                     Text(UIStrings.automatic).tag("")
                     Divider()
-                    ForEach(snapshot.entries, id: \.name) { entry in
+                    // Hardware ports first — and an absent manual choice with them, so
+                    // it is never buried; tunnels, bridges and the like in their own section.
+                    ForEach(snapshot.entries.filter { $0.isHardwarePort || !$0.isAvailable }, id: \.name) { entry in
                         Text(entry.isAvailable ? entry.label : UIStrings.absent(entry.label)).tag(entry.name)
+                    }
+                    let others = snapshot.entries.filter { !$0.isHardwarePort && $0.isAvailable }
+                    if !others.isEmpty {
+                        Section(UIStrings.otherInterfaces) {
+                            ForEach(others, id: \.name) { entry in
+                                Text(entry.label).tag(entry.name)
+                            }
+                        }
                     }
                 }
                 .labelsHidden()
@@ -197,6 +207,11 @@ public struct PanelView: View {
                     ))
                     // "Not registered yet" is not "cannot": only a missing bundle disables this.
                     .disabled(snapshot.loginItem == .unavailable)
+                    // A toggle that springs back without a word is the worst outcome:
+                    // say why, here, where it happened.
+                    if let error = snapshot.loginItemError {
+                        Text(UIStrings.loginItemFailed(error)).font(.caption).foregroundStyle(.red)
+                    }
                     if snapshot.loginItem == .requiresApproval {
                         Text(UIStrings.approveLoginItem).font(.caption).foregroundStyle(.secondary)
                     } else if snapshot.loginItem == .unavailable {

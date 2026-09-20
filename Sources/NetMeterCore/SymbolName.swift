@@ -6,11 +6,9 @@
 /// the names live here, in one list, and a test asserts that each one resolves.
 /// Views take their names from this type and never spell one as a literal; a
 /// second test scans the app's sources to keep it that way.
+///
+/// The app draws its own arrows and currently uses no symbol, so the list is
+/// empty. The first symbol anyone needs goes here, not into a view.
 public enum SymbolName {
-    /// The scaffold's placeholder status item.
-    public static let statusPlaceholder = "arrow.up.arrow.down"
-
-    public static let all: [String] = [
-        statusPlaceholder,
-    ]
+    public static let all: [String] = []
 }

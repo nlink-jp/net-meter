@@ -37,7 +37,7 @@ final class StatusPreviewTests: XCTestCase {
         ]
 
         for scale in [CGFloat(1), 2] {
-            let cellWidth = StatusRenderer.size(mode: .numbersAndGraph, unit: .bytes).width + 8
+            let cellWidth = StatusRenderer.size(mode: .numbersAndGraph).width + 8
             let cellHeight = StatusRenderer.height + 6
             let sheetSize = NSSize(width: cellWidth * CGFloat(finishes.count * DisplayMode.allCases.count),
                                    height: cellHeight * CGFloat(readings.count))
@@ -58,7 +58,9 @@ final class StatusPreviewTests: XCTestCase {
                         background.setFill()
                         NSRect(origin: origin, size: NSSize(width: cellWidth, height: cellHeight)).fill()
                         let content = StatusContent(reading: reading.1, columns: columns, mode: mode, unit: .bytes)
-                        var image = StatusRenderer.image(content: content, finish: finish, scale: scale)
+                        let bitmap = StatusRenderer.bitmap(content: content, finish: finish, scale: scale)
+                        var image = NSImage(size: bitmap.size)
+                        image.addRepresentation(bitmap)
                         if finish == .template { image = Self.tinted(image, NSColor(deviceWhite: 1, alpha: 0.9)) }
                         image.draw(at: NSPoint(x: origin.x + 4, y: origin.y + 3), from: .zero, operation: .sourceOver, fraction: 1)
                         column += 1
