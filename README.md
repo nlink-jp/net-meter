@@ -40,7 +40,9 @@ never show another interface in its place.
 Click the item to open the panel: the last three minutes as a chart, the
 interface's addresses and link speed, the peaks of those three minutes, and the
 totals since launch. The link speed is what the interface reports, not a limit on
-what it carries. The settings are in the same panel:
+what it carries. The panel does not take the keyboard away from the app you are
+working in. Click anywhere else, click the item again, or press Esc to close it.
+The settings are in the same panel:
 
 | Setting | Choices |
 |---|---|
@@ -83,6 +85,7 @@ menu bar item appears.
 - [RFP](docs/en/net-meter-rfp.md) — scope, behaviour and the design decisions behind them
 - [ADR-0001](docs/en/adr/0001-counter-readings-to-rates.md) — how counter readings become rates, and when a sample is thrown away
 - [ADR-0002](docs/en/adr/0002-menu-bar-drawing.md) — how the menu bar item is drawn
+- [ADR-0003](docs/en/adr/0003-non-activating-panel.md) — why the panel is a non-activating panel, not a popover
 - [Spikes](spikes/README.md) — the measurements the design rests on
 
 ## License

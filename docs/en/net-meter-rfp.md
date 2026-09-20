@@ -98,7 +98,8 @@ None. Only OS standard frameworks are used. The app itself makes no network conn
 - Swift 6 (strict concurrency) with Swift Package Manager.
 - The menu bar item is custom-drawn on an AppKit `NSStatusItem`. SwiftUI's `MenuBarExtra`
   is not used because it does not suit a custom two-line layout updated every second.
-- The panel is SwiftUI hosted in an `NSPopover`, with the history graph drawn by Swift
+- The panel is SwiftUI hosted in ~~an `NSPopover`~~ a non-activating `NSPanel` (2026-09-20:
+  Amendment A13, ADR-0003), with the history graph drawn by Swift
   Charts. Panel content is created when the panel opens and released when it closes.
 - Supported environment: macOS 26 or later, Apple Silicon only.
 
@@ -340,6 +341,23 @@ bar never changes once drawn. The window becomes about fourteen seconds; the lon
 the panel's three-minute chart. With it, the vertical auto-scale now **grows at once and comes
 down by 20% per sample**, so that the remaining bars do not all jump taller in the instant a
 peak leaves the window.
+
+### 2026-09-20 — Amendment after the first release
+
+**A13. The panel lives in a non-activating `NSPanel`, not an `NSPopover` (correction to §3; ADR-0003)**
+After the first release the user reported that, only the first time after launch, the panel's
+drop-down did not expand and something redrew. The first release had closed a related problem —
+the first click inside the panel activates the app, and the activation ends the menu's tracking —
+by activating the app when the panel opens. Recorded with the signed bundle launched through
+LaunchServices, that request was refused by the OS right after launch, the first click then
+activated the app, and the menu ended after 71 ms. macOS 14 and later refuse activation for up
+to about 30 seconds after launch. The checks made during development (nine out of nine) used a
+build started from a terminal and never met this condition.
+The panel now lives in an `NSPanel` with `.nonactivatingPanel`, and the app never asks to be
+activated. Under the same condition (the first click, 21.8 s after launch) the menu stayed open
+for 1,906 ms and no activation happened at all (one run). The popover's arrow is gone; the panel
+appears directly below the item. The full decision, the rejected alternatives and the prior
+implementations are in ADR-0003.
 
 ---
 

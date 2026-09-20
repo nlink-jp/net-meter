@@ -73,11 +73,10 @@ public enum PanelHistory {
 
 /// Where a mouse-down landed while the panel is open, and whether that closes it.
 ///
-/// `.transient` alone is not enough: it misses clicks on surfaces that take no
-/// activation — an empty stretch of the menu bar, another app's non-activating
-/// panel — so the app watches clicks itself. The decision is kept here, away from
-/// AppKit, so it can be pinned by a test.
-public enum PopoverClick: Equatable, Sendable {
+/// The panel is a non-activating window (ADR-0003), so nothing tells the app that
+/// the user has clicked somewhere else: the app watches mouse-downs itself. The
+/// decision is kept here, away from AppKit, so it can be pinned by a test.
+public enum PanelClick: Equatable, Sendable {
     /// The status item's own button: its action toggles the panel, so closing
     /// here as well would turn one click into close-then-reopen.
     case statusButton
@@ -94,12 +93,13 @@ public enum PopoverClick: Equatable, Sendable {
 /// own status item reaches the *global* mouse-down monitor first and the button's
 /// action a few tens of milliseconds later — or, when the app is active, sometimes
 /// never (measured in a sibling app, nvme-lens, from which this type is ported).
-/// Letting both act on the popover closes the panel and opens it again.
+/// Letting both act closes the panel and opens it again.
 ///
 /// The two events cannot be matched by identity — the action runs under a
 /// synthesized event whose number is always 0 — and they must not be matched by
-/// time or by `isShown`. Both were tried here and both failed on real hardware:
-/// with the default close animation `isShown` stayed true for about 540 ms after
+/// time or by the window's own idea of being shown. Both were tried here, when the
+/// panel was an `NSPopover`, and both failed on real hardware: with the default
+/// close animation `isShown` stayed true for about 540 ms after
 /// the close was requested, so at two clicks a second every other "open" click
 /// was read as "close" and nothing opened. So they are matched by order: the
 /// monitor closes the panel and notes that the click was on the item, and the

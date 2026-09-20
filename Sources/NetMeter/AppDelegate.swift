@@ -5,9 +5,9 @@ import NetMeterUI
 import SwiftUI
 
 /// Wiring only: the OS sources, the one-second timer, the status item and the
-/// panel's popover.
+/// panel's window.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var controller: MeterController?
     private let pathMonitor = PathOrderMonitor()
@@ -19,20 +19,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var activity: NSObjectProtocol?
     private var now: () -> Double = { 0 }
 
-    private let popover = NSPopover()
+    /// A non-activating panel (ADR-0003). The app never asks to be activated.
+    private let panel = PanelWindow()
+    /// Whether the panel is open is this boolean, set in `showPanel` and
+    /// `hidePanel` and nowhere else — not something read back from the window.
+    private var panelOpen = false
     #if TRACE
     var traceItemFrame: CGRect? { statusItem?.button?.window?.frame }
-    var tracePanelShown: Bool { popover.isShown }
+    var tracePanelShown: Bool { panelOpen }
     #endif
     /// Exists only while the panel is open.
     private var panelModel: PanelModel?
+    /// What the content last said it needs; the window is placed from it.
+    private var panelContentSize = CGSize(width: PanelView.width, height: 400)
     private var clickMonitors: [Any] = []
     /// One click on the status item reaches two handlers; see PanelToggle.
     private var panelToggle = PanelToggle()
     /// Refreshes wait while one of the panel's menus is open; see PanelUpdateGate.
     private var updateGate = PanelUpdateGate()
-    /// Whoever was frontmost before the panel took activation, to hand it back.
-    private var previousApp: NSRunningApplication?
     /// Why launch at login could not be changed; shown until the next attempt or
     /// until the panel closes.
     private var loginItemError: String?
@@ -66,12 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         item.button?.action = #selector(togglePanel)
         statusItem = item
 
-        popover.behavior = .transient
-        popover.delegate = self
-        // Not animated, on purpose: with the default animation `isShown` stayed
-        // true for about 540 ms after a close was requested (measured), and a
-        // click in that window was read as "close" when the user meant "open".
-        popover.animates = false
+        panel.onCancel = { [weak self] in self?.hidePanel() }
 
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(menuDidBeginTracking), name: NSMenu.didBeginTrackingNotification, object: nil)
@@ -105,8 +104,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if item.length != width {
             item.length = width
             // Changing the display mode from inside the panel resizes the item the
-            // panel is anchored to; re-anchor so the arrow keeps pointing at it.
-            if popover.isShown { popover.positioningRect = button.bounds }
+            // panel hangs from. The item's window has not moved yet at this point,
+            // so the panel is placed again on the next turn of the run loop.
+            if panelOpen {
+                DispatchQueue.main.async { [weak self] in self?.placePanel() }
+            }
         }
 
         // ADR-0002: the button reports the menu bar's own appearance, which can
@@ -119,7 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // The panel is only kept up to date while it is open.
         #if TRACE
-        if panelModel != nil { Trace.log("PUSH    unit=\(controller.settings.unit) mode=\(controller.settings.displayMode) held=\(updateGate.trackingDepth > 0)") }
+        if panelModel != nil { Trace.log("PUSH    unit=\(controller.settings.unit) mode=\(controller.settings.displayMode) held=\(updateGate.trackingDepth > 0) content=\(Int(panelContentSize.width))x\(Int(panelContentSize.height)) active=\(NSApp.isActive)") }
         #endif
         pushPanelUpdate()
     }
@@ -132,16 +134,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func menuDidBeginTracking() {
-        guard popover.isShown else { return }
+        guard panelOpen else { return }
         updateGate.menuDidBeginTracking()
     }
 
     @objc private func menuDidEndTracking() {
-        guard popover.isShown, updateGate.menuDidEndTracking() else { return }
+        guard panelOpen, updateGate.menuDidEndTracking() else { return }
         // Not here and now: the pop-up button sends its action after this
         // notification, and the refresh must not get in before the selection.
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.popover.isShown else { return }
+            guard let self, self.panelOpen else { return }
             self.pushPanelUpdate()
         }
     }
@@ -162,22 +164,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func togglePanel() {
         #if TRACE
-        Trace.log("ACTION  event=\(NSApp.currentEvent.map { "\($0.type.rawValue)#\($0.eventNumber)" } ?? "nil") active=\(NSApp.isActive) shown=\(popover.isShown) awaiting=\(panelToggle.awaitingActionOfClosingClick)")
+        Trace.log("ACTION  event=\(NSApp.currentEvent.map { "\($0.type.rawValue)#\($0.eventNumber)" } ?? "nil") active=\(NSApp.isActive) shown=\(panelOpen) awaiting=\(panelToggle.awaitingActionOfClosingClick)")
         #endif
-        switch panelToggle.statusItemAction(panelShown: popover.isShown) {
+        switch panelToggle.statusItemAction(panelShown: panelOpen) {
         case .open: showPanel()
-        case .close: closePanel()
+        case .close: hidePanel()
         case .none: syncClickMonitors()
         }
     }
 
-    private func closePanel() {
-        popover.performClose(nil)
+    /// The one way the panel closes: a click elsewhere, a click on the item, Esc.
+    /// Everything that was set up on open is undone here, so none of it can be
+    /// skipped. Safe to call when the panel is already closed.
+    private func hidePanel() {
+        #if TRACE
+        if panelOpen { Trace.log("HIDE") }
+        #endif
+        if panelOpen {
+            panelOpen = false
+            panel.orderOut(nil)
+            panel.clearContent()
+            panelModel = nil
+            loginItemError = nil
+            updateGate.reset()
+        }
         syncClickMonitors()
     }
 
+    /// Below the status item, within the screen the item is on.
+    private func placePanel() {
+        guard let button = statusItem?.button, let itemWindow = button.window else { return }
+        let itemFrame = itemWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? itemFrame
+        let frame = PanelPlacement.frame(itemFrame: itemFrame, panelSize: panelContentSize, visibleFrame: visible)
+        if frame != panel.frame {
+            panel.setFrame(frame, display: true)
+            #if TRACE
+            Trace.log("PLACE   frame=\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
+            #endif
+        }
+    }
+
     private func showPanel() {
-        guard let button = statusItem?.button, controller != nil else { return }
+        guard statusItem?.button != nil, controller != nil else { return }
 
         // Built on open and released on close: a SwiftUI tree that exists while
         // hidden keeps laying out.
@@ -202,40 +231,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.panelModel?.snapshot = self.snapshot()
         }
         model.quit = { NSApp.terminate(nil) }
+        model.contentSizeChanged = { [weak self] size in
+            guard let self, self.panelOpen, size != self.panelContentSize else { return }
+            self.panelContentSize = size
+            self.placePanel()
+        }
         panelModel = model
 
-        let hosting = NSHostingController(rootView: PanelView(model: model))
-        hosting.sizingOptions = [.preferredContentSize]
-        popover.contentViewController = hosting
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-
-        // A status item click does not activate an accessory app, so the panel
-        // opens without key status and its material is drawn inactive — visibly
-        // dimmed. Taking key status brightens it. This is about drawing only; it
-        // is not why the click monitors exist.
-        hosting.view.window?.makeKey()
-        // The panel has controls, so the app is activated now rather than by the
-        // first click inside it: that click's activation arrived while the pop-up
-        // menu it had just opened was tracking, and ended the menu 78 ms after it
-        // began (measured). `makeKey()` alone does not activate the app.
-        let frontmost = NSWorkspace.shared.frontmostApplication
-        if frontmost?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
-            previousApp = frontmost
-        }
-        NSApp.activate(ignoringOtherApps: true)
+        panelContentSize = panel.setContent(PanelView(model: model))
+        placePanel()
+        panelOpen = true
+        // Key, so that Esc and text selection work — and nothing more than key:
+        // the app is not activated and does not ask to be (ADR-0003). The first
+        // release asked, and right after launch the OS refused; the first click in
+        // the panel then activated the app and ended the menu it had just opened.
+        panel.makeKeyAndOrderFront(nil)
         syncClickMonitors()
         #if TRACE
-        Trace.log("SHOW    active=\(NSApp.isActive) key=\(hosting.view.window?.isKeyWindow ?? false)")
+        Trace.log("SHOW    active=\(NSApp.isActive) key=\(panel.isKeyWindow) visible=\(panel.isVisible) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")")
         #endif
     }
 
-    /// `.transient` closes the panel only when the outside click lands in a window
-    /// that takes activation. A click on an empty stretch of the menu bar, or on
-    /// another app's non-activating panel, is missed — so outside clicks are
-    /// watched explicitly. The monitors live while the panel is shown and, after
-    /// a click on the item closed it, until that click's action has been dealt with.
+    /// Nothing tells a non-activating panel that the user clicked somewhere else,
+    /// so outside clicks are watched explicitly. The monitors live while the panel
+    /// is open and, after a click on the item closed it, until that click's action
+    /// has been dealt with.
     private func syncClickMonitors() {
-        let needed = panelToggle.needsMonitor(panelShown: popover.isShown)
+        let needed = panelToggle.needsMonitor(panelShown: panelOpen)
         if needed, clickMonitors.isEmpty {
             let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
             let global = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
@@ -262,21 +284,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // The frame is read now: the item's width changes with the display mode.
         let onItem = statusItemOwns(location, itemWindowFrame: statusItem?.button?.window?.frame)
         #if TRACE
-        Trace.log("GMON    onItem=\(onItem) shown=\(popover.isShown)")
+        Trace.log("GMON    onItem=\(onItem) shown=\(panelOpen)")
         #endif
-        if panelToggle.globalMouseDown(panelShown: popover.isShown, onStatusItem: onItem) == .close {
-            popover.performClose(nil)
+        if panelToggle.globalMouseDown(panelShown: panelOpen, onStatusItem: onItem) == .close {
+            hidePanel()
+        } else {
+            syncClickMonitors()
         }
-        syncClickMonitors()
     }
 
     /// A mouse-down inside the app.
     private func localMouseDown(in window: NSWindow?, at location: NSPoint) {
-        let click: PopoverClick
+        let click: PanelClick
         if window === statusItem?.button?.window {
             click = .statusButton
-        } else if let window, window === popover.contentViewController?.view.window
-                    || window.parent === popover.contentViewController?.view.window {
+        } else if let window, window === panel || window.parent === panel {
             // The panel itself, or a menu one of its pickers opened.
             click = .insidePanel
         } else {
@@ -284,29 +306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         #if TRACE
         let hit = window?.contentView?.superview?.hitTest(location) ?? window?.contentView?.hitTest(location)
-        Trace.log("LMON    click=\(click) key=\(window?.isKeyWindow ?? false) active=\(NSApp.isActive) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil") at=(\(Int(location.x)),\(Int(location.y))) window=\(window.map { String(describing: type(of: $0)) } ?? "nil")")
+        Trace.log("LMON    click=\(click) key=\(window?.isKeyWindow ?? false) active=\(NSApp.isActive) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil") content=\(Int(panelContentSize.width))x\(Int(panelContentSize.height)) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil") at=(\(Int(location.x)),\(Int(location.y))) window=\(window.map { String(describing: type(of: $0)) } ?? "nil")")
         #endif
-        if click.closesPanel, popover.isShown { closePanel() }
-    }
-
-    func popoverDidClose(_ notification: Notification) {
-        #if TRACE
-        Trace.log("DIDCLOSE")
-        #endif
-        popover.contentViewController = nil
-        panelModel = nil
-        loginItemError = nil
-        updateGate.reset()
-        // An accessory app that stays active with no window leaves the user's
-        // keystrokes going nowhere. If closing the panel did not activate
-        // something else, hand activation back to whoever had it.
-        if NSApp.isActive, let previousApp, !previousApp.isTerminated {
-            NSApp.yieldActivation(to: previousApp)
-            previousApp.activate()
-        }
-        previousApp = nil
-        // Also reached when `.transient` closed the panel on its own.
-        syncClickMonitors()
+        if click.closesPanel, panelOpen { hidePanel() }
     }
 }
 
@@ -325,7 +327,7 @@ enum Trace {
         let path = ProcessInfo.processInfo.environment["NET_METER_TRACE"] ?? "/tmp/net-meter-trace.log"
         FileManager.default.createFile(atPath: path, contents: nil)
         handle = FileHandle(forWritingAtPath: path)
-        log("START pid=\(ProcessInfo.processInfo.processIdentifier)")
+        log("START pid=\(ProcessInfo.processInfo.processIdentifier) bundle=\(Bundle.main.bundleIdentifier ?? "nil") path=\(Bundle.main.bundlePath.hasSuffix(".app") ? "app bundle" : "bare binary") policy=\(NSApp.activationPolicy().rawValue)")
         let center = NotificationCenter.default
         for (name, label) in [(NSMenu.didBeginTrackingNotification, "MENU    begin"), (NSMenu.didEndTrackingNotification, "MENU    end"),
                               (NSApplication.didBecomeActiveNotification, "APP     active"), (NSApplication.didResignActiveNotification, "APP     inactive"),

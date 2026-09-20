@@ -4,6 +4,23 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+
+- The first time the panel was opened after launch, its pop-up menus closed the
+  moment they opened. The panel asked macOS to activate the app when it opened;
+  right after launch macOS refuses that, so the first click inside the panel
+  activated the app instead and the activation ended the menu (71 ms after it
+  began, measured). The panel is now a non-activating panel and the app never
+  asks to be activated: the menus work from the first click, and opening the
+  panel no longer takes the keyboard from the app you are working in (ADR-0003).
+
+### Changed
+
+- The panel appears directly below the menu bar item, without the popover's
+  arrow, and is kept within the screen. Esc closes it.
+
 ## [0.1.0] - 2026-09-20
 
 ### Added

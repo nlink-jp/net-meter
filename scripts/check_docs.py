@@ -30,6 +30,8 @@ RETIRED: dict[str, str] = {
     "secondsPerColumn": "graph bars are samples, not time buckets (RFP Amendment A12)",
     "sameClickWindow": "clicks and actions are matched by order, never by time (PanelToggle)",
     "monitorClosedAt": "clicks and actions are matched by order, never by time (PanelToggle)",
+    "PopoverClick": "renamed PanelClick when the popover went (ADR-0003)",
+    "popoverDidClose": "the panel is a non-activating NSPanel with one close path, hidePanel (ADR-0003)",
 }
 
 SEARCHED_DIRS = ("Sources", "Tests", "docs", "spikes")

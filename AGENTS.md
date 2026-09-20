@@ -4,7 +4,8 @@
 
 macOS menu bar app (util-series) that shows the current upstream/downstream rate
 of one network interface, as numbers and a graph. Swift 6 (strict concurrency),
-Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI popover, macOS 26+,
+Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI panel in a non-activating
+`NSPanel` (ADR-0003), macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
@@ -72,7 +73,8 @@ Sources/
     GraphScale.swift       Shared up/down full scale with a floor; eased(previous:target:) — up at once, down by 20% a sample
     PanelUpdateGate.swift  Holds panel refreshes while one of the panel's menus is tracking; one is delivered after
     Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
-                           PopoverClick.closesPanel, PanelToggle (one click, two handlers, matched by order)
+                           PanelClick.closesPanel, PanelToggle (one click, two handlers, matched by order)
+    PanelPlacement.swift   frame(itemFrame:panelSize:visibleFrame:) — below the item, centred, kept on the screen
     StatusItemHit.swift    statusItemOwns(location, itemWindowFrame:) — the measured region, top-left ownership
     LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval
     SettingsStore.swift    SettingsStore protocol + the in-memory store tests use
@@ -91,12 +93,15 @@ Sources/
     StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish) -> image with 1x and 2x representations; width by display mode alone
     MeterController.swift  Readings -> what is on display; every OS dependency injected; a setting reaches the display at once
     PanelModel.swift       PanelSnapshot (a value, settings and the last action's error included) + the one ObservableObject
-    PanelView.swift        The SwiftUI panel: fixed width, height from content; Swift Charts history with a fixed window and scale
+    PanelView.swift        The SwiftUI panel: fixed width, height from content — and it reports that height;
+                           Swift Charts history with a fixed window and scale
+    PanelWindow.swift      ADR-0003: the `.nonactivatingPanel` NSPanel the panel lives in; key but never main, Esc to
+                           the owner, popover material drawn active, no safe area from the hidden title bar
     UIStrings.swift        Every user-visible string, one language throughout; a test requires each to be in use
   NetMeter/              Executable: wiring only
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
-    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, and the popover:
-                           content built on open and released on close, makeKey(), click monitors, re-anchoring;
+    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, and the panel:
+                           content built on open and released on close, one close path, click monitors, placement;
                            a click/action recorder under `#if TRACE` only
 Tests/
   NetMeterCoreTests/     Pure. ReplayTests is opt-in
@@ -190,7 +195,7 @@ building the thing it is about.
 
 - **The sampling timer must be registered in `.common` run loop mode.**
   `Timer.scheduledTimer` registers in `.default` only, and the run loop leaves
-  that mode while a menu or popover is tracking — the display would freeze
+  that mode while a menu is tracking — the display would freeze
   exactly while the user is looking at it. Use the target/selector `Timer` API
   (a `@Sendable` closure trips Swift 6 capture checks) and
   `RunLoop.main.add(_:forMode: .common)`. (KB: "定期更新の Timer は .common run
@@ -219,26 +224,51 @@ building the thing it is about.
   unit label of either unit system; otherwise every change in digit count — or a
   switch between bytes and bits — shifts the neighbouring icons. A panel's height, by contrast, is never fixed from today's
   content. (KB: "ビューの寸法を「今日の中身」で測って固定しない")
-- **The panel takes key status on open, and outside clicks are watched
-  explicitly — two separate needs.** A status item click does not activate an
-  accessory app, so a popover that is merely shown is drawn inactive, visibly
-  dimmed under Liquid Glass: call `makeKey()` on its window right after
-  `show(relativeTo:)`. Independently of that, **`.transient` alone misses outside
-  clicks that take no activation** — an empty stretch of the menu bar, another
-  app's non-activating panel — so global + local mouse-down monitors are
-  installed for as long as the panel is shown and removed in `popoverDidClose`.
-  The local monitor ignores the status item button's window (its action toggles;
-  closing too would reopen) and the panel's own; that decision is
-  `PopoverClick.closesPanel`, pinned by a test. Under Swift 6 the handlers are
-  nonisolated: wrap the body in `MainActor.assumeIsolated` and read
-  `event.window` outside it. An earlier version of this entry said `makeKey()`
-  activates the app and that activation breaks `.transient`; measured on macOS
-  27.0 in two sibling apps, neither holds. The causal details differ per app, so
-  they are measured here rather than copied. (KB: "メニューバーの NSPopover は
-  外側クリックのクローズを `.transient` に任せない" and "メニューバーの NSPopover は
-  表示直後に makeKey() する")
+- **The panel is a non-activating `NSPanel`, and the app never asks to be
+  activated (ADR-0003).** A click inside an ordinary window of an accessory app
+  activates the app, and that activation arrives while the pop-up menu the click
+  has just opened is tracking — and ends it. Measured twice: 78 ms after the menu
+  began with a popover that was only made key, and 71 ms with a popover that
+  called `NSApp.activate` on open — *right after launch*, where the OS refused the
+  request (frontmost stayed the previous app, no `didBecomeActive`; macOS 14+
+  refuses activation for up to ~30 s after launch, and on macOS 27 a status item
+  click is received by another process, so the request is not tied to a user
+  action). That second design had passed nine opens out of nine in a build started
+  from a terminal — a child of the frontmost app — and failed on the first open of
+  the signed bundle started by LaunchServices. **Test anything that depends on
+  activation from a LaunchServices launch, within the first half minute.** With
+  `.nonactivatingPanel` the same first click, 21.8 s after launch, left the menu
+  open for 1,906 ms, and no activation happened at all (one run). `PanelWindowTests`
+  pins the style bit and scans the sources: `.activate(`, `yieldActivation` and
+  `NSPopover(` fail the build's tests. (KB: "メニューバー用 NSPanel の罠 2 件")
+- **`NSApp.isActive` reads true while the non-activating panel is key** — with no
+  `didBecomeActive` posted and another app still frontmost (measured, one run).
+  For "is the app active", ask `NSWorkspace.shared.frontmostApplication`.
+- **The panel's rules, all from siblings that paid for them:** `canBecomeKey` true
+  (Esc, text selection) and `canBecomeMain` false; never `hidesOnDeactivate` (it
+  hides without clearing `isVisible`); whether the panel is open is the app's own
+  boolean, set in `showPanel` and `hidePanel` only; **one close path** —
+  `hidePanel` — for outside clicks, a click on the item and Esc, and it always
+  removes the monitors and releases the content. Nothing tells a non-activating
+  panel that the user clicked elsewhere, so global + local mouse-down monitors are
+  installed while it is open. The local monitor ignores the status item button's
+  window (its action toggles; closing too would reopen) and the panel's own, a
+  menu's child window included; that decision is `PanelClick.closesPanel`, pinned
+  by a test. Under Swift 6 the handlers are nonisolated: wrap the body in
+  `MainActor.assumeIsolated` and read `event.window` outside it.
+- **A hidden title bar still has a safe area.** The panel is titled (the window
+  server then draws the rounded corners and the shadow) with the title bar hidden,
+  and SwiftUI content in it asked for 535 pt instead of 503 — 32 pt of safe area.
+  `ignoresSafeArea()` on the view did not change the size asked for;
+  `safeAreaRegions = []` on the hosting controller did. A test compares the
+  window's answer with the offscreen layout's.
+- **The window is sized from what the content reports.** The hosting controller
+  has `sizingOptions = []`; `PanelView` takes its ideal height whatever the window
+  offers (`fixedSize`) and reports it (`onGeometryChange`), and the app places the
+  window from that with `PanelPlacement.frame` — the top edge stays put, so the
+  panel grows downwards. Two things sizing one window is how it starts to jump.
 - **One click on the status item reaches two handlers, and they are matched by
-  order — never by time, and never by `isShown`.** On macOS 27 another process
+  order — never by time, and never by what the window says about itself.** On macOS 27 another process
   hosts the menu bar, so a click on our own item reaches the *global* mouse-down
   monitor first and the button's action 5–30 ms later (when the app is active the
   action sometimes never comes — measured in nvme-lens, from which `PanelToggle`
@@ -246,25 +276,17 @@ building the thing it is about.
   the click was on the item; the next action is that click's and is dropped; with
   no action, the note is void at the next mouse-down, so the monitor outlives the
   panel until then.
-  What was tried first and failed on real hardware: deciding by `isShown` plus a
+  What was tried first and failed on real hardware, when the panel was an
+  `NSPopover`: deciding by `isShown` plus a
   0.25 s window. With the default close animation `isShown` stayed true for
   534–546 ms after a close was requested (four measurements), so at two clicks a
   second every other "open" click was read as "close" and nothing opened — which
-  is how it was reported. `popover.animates = false` brings the close down to
-  2–18 ms, and the order-matching toggle survived 58 clicks at a median of 183 ms
-  apart: 57 of 57 transitions alternated.
-  **Do not reintroduce a time window, the animation, or a decision on `isShown`
-  alone** — each is this defect again under a different load.
-- **A panel with controls activates the app when it opens.** `makeKey()` makes the
-  popover key but leaves the app inactive, so the *first* click inside it
-  activated the app — and that activation arrived while the pop-up menu the click
-  had just opened was tracking, and ended the menu 78 ms after it began
-  (measured; reported as "the first click on the unit box behaves erratically").
-  `NSApp.activate` right after `show` gets it done 12–39 ms after the panel
-  appears, before anyone can click. The app that was frontmost is remembered, and
-  when the panel closes while net-meter is still active, activation is handed
-  back (`yieldActivation(to:)` + `activate()`); otherwise an accessory app with no
-  window keeps the keyboard and the user's typing goes nowhere.
+  is how it was reported. Without the animation the close took 2–18 ms, and the
+  order-matching toggle survived 58 clicks at a median of 183 ms apart: 57 of 57
+  transitions alternated. The panel is now a window shown and hidden without
+  animation, and its state is the app's own boolean.
+  **Do not reintroduce a time window, an animation, or a decision on the window's
+  own state** — each is this defect again under a different load.
 - **The panel is not refreshed while one of its menus is open.** The per-second
   refresh made SwiftUI re-sync the pop-up button to the current value, and the
   item then picked was reported as that old value: the setter received the old
@@ -272,29 +294,35 @@ building the thing it is about.
   are held by `PanelUpdateGate` from `NSMenu.didBeginTracking` to
   `didEndTracking` and one is delivered afterwards — on the next run loop turn,
   after the control's own action. Measured after the fix: seven selections of a
-  different value, seven applied; shortest menu 909 ms; nine opens, nine
-  activations. The menu bar item itself is never held back.
+  different value, seven applied; shortest menu 909 ms. The menu bar item itself
+  is never held back.
 - **Reading a click trace: one click is one event number — and a selection
   arrives before its menu ends.** The binding's setter runs about 190 ms *before*
   `didEndTracking` is posted. A script that looked for the settings change after
   "MENU end" called five good selections lost. That was the second time in one
   day a working fix was declared broken by the analysis rather than by the app:
   when a trace and the person who used the app disagree, read the raw lines
-  before believing the script. `swift build
-  -Xswiftc -DTRACE --scratch-path .build/trace` compiles in a recorder
-  (`NET_METER_TRACE=<file>`) of every mouse-down, mouse-up and action; it is never
-  part of a release build. Its own global monitor runs *after* the app's, so its
+  before believing the script. `make build-app SWIFT_FLAGS="-Xswiftc -DTRACE"
+  DIST_DIR=dist/trace` builds a signed bundle with a recorder
+  (`NET_METER_TRACE=<file>`) of every mouse-down, mouse-up and action; start it
+  with `open --env NET_METER_TRACE=<file> dist/trace/NetMeter.app`, because how
+  the app is launched is part of what is being measured. It is never part of a
+  release: `make package` refuses a non-empty `SWIFT_FLAGS`, and `make
+  verify-release` counts the recorder's symbols in the binary itself —
+  `nm <binary> | grep -ci trace` gave 0 for the release and 25 for the diagnostic
+  build. `strings` cannot tell them apart: Swift stores string
+  literals of 15 bytes or fewer inline in the code, and they show up nowhere.
+  The recorder's own global monitor runs *after* the app's, so its
   line for a closing click already says `shown=false`. Read naively, that made a
   working fix look broken: half the clicks seemed to do nothing. Group lines by
   event number and judge a click by the state its mouse-up line reports.
-- **Build the popover's content when it opens and release it in
-  `popoverDidClose`.** An eagerly created `NSHostingController` kept laying out a
-  hidden panel at ~12% CPU in load-spinner. Set
-  `sizingOptions = [.preferredContentSize]`. (KB: "NSPopover 内の SwiftUI パネルは
-  開いた時だけ生成する")
-- **Borderless icon buttons in the popover need `.focusable(false)`**, or the
-  first one takes keyboard focus and draws a focus ring the moment the popover
-  opens. (status-lens and load-spinner AGENTS.md)
+- **Build the panel's content when it opens and release it when it closes.** An
+  eagerly created `NSHostingController` kept laying out a hidden panel at ~12% CPU
+  in load-spinner. (KB: "NSPopover 内の SwiftUI パネルは開いた時だけ生成する" — the
+  same holds for a panel window.)
+- **Borderless icon buttons in the panel need `.focusable(false)`**, or the first
+  one takes keyboard focus and draws a focus ring the moment the panel opens.
+  (status-lens and load-spinner AGENTS.md)
 - **A setting changed in the panel has to reach the menu bar at once.** A change
   to one `ObservableObject` does not reach a view that is not observing it. (KB:
   "別の ObservableObject の変更は、観測していないビューには届かない")
@@ -338,7 +366,7 @@ building the thing it is about.
   検証できる")
 - **Judge translucent materials from a region capture.** `screencapture -R` keeps
   the background; `-l <windowid>` drops it and makes the panel look falsely dark.
-  (KB: the `makeKey()` entry above, where this was measured)
+  (KB: "メニューバーの NSPopover は表示直後に makeKey() する", where this was measured)
 - **Some behaviour only shows after hours.** A frozen timer and a counter wrap do
   not appear in a five-minute check; look at the app after it has run overnight.
   A counter that a drawing callback increments proves nothing in a headless test.
@@ -387,8 +415,10 @@ building the thing it is about.
   IPv6 address needs up to 265 pt and was cut in the middle. Addresses now get
   the panel's full width in a monospaced font, and a test measures the 39-character
   worst case against the width. The previews and tests use that address too.
-- **Re-anchor the popover when the item's width changes.** Display mode is changed
-  from inside the panel, which resizes the very item the panel points at.
+- **Place the panel again when the item's width changes.** Display mode is changed
+  from inside the panel, which resizes the very item the panel hangs from. The
+  item's window has not moved yet when its length is set, so the placement waits
+  for the next turn of the run loop.
 - **Single instance covers the bundle, not the bare binary.**
   `LSMultipleInstancesProhibited` stops LaunchServices launches;
   `singleInstanceDecision` stops direct exec of the bundled binary and `open -n`
@@ -404,8 +434,10 @@ building the thing it is about.
   decisions, rejected alternatives, the measured platform constraints, and the
   amendments made after the independent design review.
 - Spikes: `spikes/README.md`.
-- Siblings of the same shape (menu bar `NSStatusItem` + SwiftUI popover):
-  **status-lens for the popover** (dismissal, focus, settings reaching the menu
-  bar, launch at login), load-spinner for the status item, the lazy panel and the
-  release wiring. Read both `AGENTS.md` files in full before building the panel —
-  a sibling's code also carries the lessons it has not applied yet.
+- Siblings of the same shape (menu bar `NSStatusItem` + a SwiftUI panel):
+  **task-clock-gui and instant-translate for the non-activating panel** (the
+  window, the one close path, placement), status-lens for dismissal, focus,
+  settings reaching the menu bar and launch at login, load-spinner for the status
+  item, the lazy content and the release wiring, nvme-lens for `PanelToggle`. Read
+  their `AGENTS.md` files in full before changing the panel — a sibling's code
+  also carries the lessons it has not applied yet.

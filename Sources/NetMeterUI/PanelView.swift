@@ -2,8 +2,8 @@ import Charts
 import NetMeterCore
 import SwiftUI
 
-/// The panel behind the menu bar item. Its width is the popover's to decide and
-/// is fixed; its height is whatever the content needs and is never fixed.
+/// The panel behind the menu bar item. Its width is fixed; its height is whatever
+/// the content needs, and the window is sized to it.
 public struct PanelView: View {
     /// Wide enough for an IPv6 address that has no run of zeros to compress — 39
     /// characters — on one line in `addressFontSize` monospaced, with room to
@@ -38,6 +38,10 @@ public struct PanelView: View {
         }
         .padding(Self.padding)
         .frame(width: Self.width)
+        // The height the content needs, whatever height the window offers right
+        // now: the window is sized from this report, not the other way round.
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { model.contentSizeChanged($0) })
     }
 
     // MARK: sections

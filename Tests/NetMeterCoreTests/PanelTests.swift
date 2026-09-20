@@ -117,8 +117,8 @@ final class PanelTests: XCTestCase {
     }
 
     func testOnlyAClickElsewhereClosesThePanel() {
-        XCTAssertFalse(PopoverClick.statusButton.closesPanel, "the button toggles; closing too would reopen")
-        XCTAssertFalse(PopoverClick.insidePanel.closesPanel)
-        XCTAssertTrue(PopoverClick.elsewhere.closesPanel)
+        XCTAssertFalse(PanelClick.statusButton.closesPanel, "the button toggles; closing too would reopen")
+        XCTAssertFalse(PanelClick.insidePanel.closesPanel)
+        XCTAssertTrue(PanelClick.elsewhere.closesPanel)
     }
 }
