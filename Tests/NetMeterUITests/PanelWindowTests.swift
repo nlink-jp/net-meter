@@ -69,27 +69,33 @@ final class PanelWindowTests: XCTestCase {
             .deletingLastPathComponent()  // NetMeterUITests
             .deletingLastPathComponent()  // Tests
             .deletingLastPathComponent()  // package root
-        let asks = try NSRegularExpression(pattern: #"\.activate\(|yieldActivation|NSPopover\("#)
+        // A tripwire, not a proof: it knows the spellings below and no others.
+        let asks = try NSRegularExpression(
+            pattern: #"(?<!NSLayoutConstraint)\.activate\(|yieldActivation|\bunhide\(|NSPopover|\.popover\("#)
         for spelling in ["NSApp.activate(ignoringOtherApps: true)", "NSApp.activate()", "app.activate(options: [])",
-                         "NSApp.yieldActivation(to: other)", "let popover = NSPopover()"] {
+                         "NSApp.yieldActivation(to: other)", "NSApp.unhide(nil)", "let popover = NSPopover()",
+                         "let popover: NSPopover = .init()", "final class Bubble: NSPopover {}", ".popover(isPresented: $shown) {}"] {
             XCTAssertNotNil(asks.firstMatch(in: spelling, range: NSRange(spelling.startIndex..., in: spelling)), spelling)
         }
+        let harmless = "NSLayoutConstraint.activate([a, b])"
+        XCTAssertNil(asks.firstMatch(in: harmless, range: NSRange(harmless.startIndex..., in: harmless)), harmless)
+
+        // Every Swift file under Sources, however deep and whichever target.
+        let sources = root.appendingPathComponent("Sources")
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
         var checked = 0
-        for directory in ["Sources/NetMeter", "Sources/NetMeterUI", "Sources/NetMeterSystem", "Sources/NetMeterCore"] {
-            let files = try FileManager.default
-                .contentsOfDirectory(at: root.appendingPathComponent(directory), includingPropertiesForKeys: nil)
-                .filter { $0.pathExtension == "swift" }
-            for file in files {
-                // Comments may name what is not done; code may not do it.
-                let code = try String(contentsOf: file, encoding: .utf8)
-                    .split(separator: "\n", omittingEmptySubsequences: false)
-                    .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                    .joined(separator: "\n")
-                XCTAssertNil(asks.firstMatch(in: code, range: NSRange(code.startIndex..., in: code)),
-                             "\(file.lastPathComponent) asks for activation or brings the popover back; see ADR-0003")
-                checked += 1
-            }
+        for case let file as URL in walker where file.pathExtension == "swift" {
+            // Comments may name what is not done; code may not do it.
+            let code = try String(contentsOf: file, encoding: .utf8)
+                .split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            XCTAssertNil(asks.firstMatch(in: code, range: NSRange(code.startIndex..., in: code)),
+                         "\(file.lastPathComponent) asks for activation or brings the popover back; see ADR-0003")
+            checked += 1
         }
+        let expected = try FileManager.default.subpathsOfDirectory(atPath: sources.path).filter { $0.hasSuffix(".swift") }.count
+        XCTAssertEqual(checked, expected, "some sources were not read")
         XCTAssertGreaterThan(checked, 20, "the sources were not found")
     }
 }
