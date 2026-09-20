@@ -7,20 +7,31 @@ let package = Package(
     // the deployment target from this line, so it is stated once.
     platforms: [.macOS("26.0")],
     targets: [
-        // Pure, testable logic. No AppKit UI in here.
+        // Pure, testable logic. No AppKit UI, no OS calls, no clock.
         .target(
             name: "NetMeterCore"
+        ),
+        // The thin layer that asks the OS: sysctl counters and, later, the
+        // interface information sources. Its tests are live — they read this
+        // Mac's real counters.
+        .target(
+            name: "NetMeterSystem",
+            dependencies: ["NetMeterCore"]
         ),
         // The menu bar app. `resources:` stays empty on purpose: SwiftPM's
         // `Bundle.module` does not look inside an assembled .app bundle.
         .executableTarget(
             name: "NetMeter",
-            dependencies: ["NetMeterCore"],
+            dependencies: ["NetMeterCore", "NetMeterSystem"],
             resources: []
         ),
         .testTarget(
             name: "NetMeterCoreTests",
             dependencies: ["NetMeterCore"]
+        ),
+        .testTarget(
+            name: "NetMeterSystemTests",
+            dependencies: ["NetMeterCore", "NetMeterSystem"]
         ),
     ]
 )

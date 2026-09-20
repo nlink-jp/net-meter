@@ -12,9 +12,10 @@ the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 starts, guards against a second instance, and shows a placeholder status item
 whose menu carries the version and Quit. The pure core underneath it is in place
 — the rate rule (ADR-0001), the meter with per-interface history, interface
-resolution, rate formatting, graph scaling — but nothing reads the OS yet: the
-`sysctl` reader and the interface information sources come next, and the display
-is Phase 2. The plan
+resolution, rate formatting, graph scaling — and `NetMeterSystem` reads the real
+counters through `sysctl`. Still to come in Phase 1: the interface information
+sources (preference order, display names, addresses) and the checks that need a
+person at the Mac (sleep, VPN, unplugging). The display is Phase 2. The plan
 is in the RFP: Phase 1 is the pure core plus the checks on real systems, Phase 2
 the drawing and the panel, Phase 3 the release.
 
@@ -54,10 +55,13 @@ Sources/
     GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
+  NetMeterSystem/        The thin layer that asks the OS. No logic worth a unit test lives here
+    SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2: bytes, packets, link speed per interface
   NetMeter/              Executable (AppKit; SwiftUI arrives with the panel)
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
 Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
+Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
                          Vendored byte-identical from nlink-jp/.github/templates — never edit here

@@ -24,6 +24,9 @@ Semantic Versioning.
   the first physical interface and never replaces an absent manual choice; rates
   formatted into a number that is never wider than three characters, in bytes or
   bits; and a graph scale shared by both directions with a floor.
+- The counter reader: one unprivileged `sysctl` per reading, for every interface
+  at once. Its tests are live — on the Mac running them, an ordinary second on
+  every interface must come out as a rate, never as a reset.
 - Every SF Symbol name the app uses is listed in one place and resolved by a
   test, so a name that does not exist fails the build instead of leaving an
   invisible menu bar item.
