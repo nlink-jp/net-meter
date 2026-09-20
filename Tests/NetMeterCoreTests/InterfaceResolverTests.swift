@@ -16,8 +16,19 @@ final class InterfaceResolverTests: XCTestCase {
         )
     }
 
+    func testAutomaticKeepsThePhysicalLinkWhileASplitTunnelVPNIsUp() {
+        // Measured once (macOS 27.0, split tunnel): the tunnel is listed LAST, with kind `other`,
+        // and the physical interfaces keep their places.
+        let vpn = measuredPath + [PathInterface(name: "utun6", kind: .other)]
+        XCTAssertEqual(
+            resolveInterface(selection: .automatic, pathOrder: vpn, available: ["utun6", "en0", "en1"]),
+            .present("en0")
+        )
+    }
+
     func testAutomaticSkipsATunnelAheadOfThePhysicalLink() {
-        // Hypothesis until measured with a VPN up: the tunnel is listed first, with kind `other`.
+        // Not measured: a full-tunnel VPN may list its tunnel first. The rule does not depend on
+        // where the tunnel sits, only on its kind.
         let vpn = [PathInterface(name: "utun7", kind: .other)] + measuredPath
         XCTAssertEqual(
             resolveInterface(selection: .automatic, pathOrder: vpn, available: ["utun7", "en0", "en1"]),

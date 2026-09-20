@@ -54,6 +54,7 @@ Sources/
     RingBuffer.swift       Fixed-capacity history storage
     GraphScale.swift       Shared up/down full scale with a floor; fraction of full scale
     InterfaceResolver.swift resolveInterface(selection:pathOrder:available:) -> present(name) | absent
+    InterfaceCatalog.swift "Ethernet (en0)" labels and the manual selection list (hardware ports first; an absent choice stays listed)
     RateFormatter.swift    bytes/s -> number + unit, number never wider than 3 characters; bytes or bits, SI prefixes
   NetMeterSystem/        The thin layer that asks the OS. No logic worth a unit test lives here
     SysctlCounterSource.swift  CounterSource over sysctl NET_RT_IFLIST2: bytes, packets, link speed per interface
@@ -61,6 +62,7 @@ Sources/
     Main.swift             @main enum; single-instance guard, then the accessory-policy app
     AppDelegate.swift      Scaffold shell: placeholder NSStatusItem + version/Quit menu
 Tests/NetMeterCoreTests/ Includes SymbolNameTests: every listed symbol resolves, and no app source spells one as a literal
+                         ReplayTests is opt-in: NET_METER_REPLAY_LOG=<watch log> replays a recording through the real Meter
 Tests/NetMeterSystemTests/ Live: reads this Mac's real counters (takes about a second; needs no traffic, no permission)
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
@@ -222,9 +224,11 @@ building the thing it is about.
 - **`NWPathMonitor.availableInterfaces` can list the same interface more than
   once.** Seen in both of two runs (macOS 27.0, wired Ethernet first, no VPN:
   `en0` twice, then Wi-Fi). De-duplicate before taking "the first physical
-  interface". How the list looks with a VPN up has not been measured; if the
-  tunnel does not appear as type `other`, or the physical interface drops out of
-  the list, the automatic-selection rule is revisited in an ADR.
+  interface". With a split-tunnel VPN up the tunnel was appended at the end with
+  type `other` and the physical interfaces kept their places (one observation).
+  A full-tunnel VPN is unmeasured; if its tunnel does not appear as type `other`,
+  or the physical interface drops out of the list, the automatic-selection rule
+  is revisited in an ADR.
 - **A status item cannot be observed through the window list on macOS 27.**
   `CGWindowListCopyWindowInfo` filtered by the app's pid returned no window (two
   observations, macOS 27.0; in the first the item was confirmed by eye), and the

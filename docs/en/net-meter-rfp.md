@@ -315,6 +315,18 @@ OS versions. The value readable as link speed is not a ceiling (one interface re
 sample. The rules, including the wrap-versus-reset distinction, are set out in
 [ADR-0001](adr/0001-counter-readings-to-rates.md).
 
+**A11. Automatic selection measured under a split-tunnel VPN (the outcome of A6)**
+While the VPN was connected, the tunnel interface (`utun6`) joined the preference order **at
+the end** with type `other`, and the physical interfaces stayed at the front (macOS 27.0,
+once). The rule "take the first Wi-Fi or wired Ethernet interface" returns the physical
+interface, and the decision stands. A VPN that routes all traffic through the tunnel has
+not been measured and may order the list differently — the rule depends only on the
+tunnel's type, not its position, so the result is the same as long as the physical interface
+stays in the list. The 385 samples of real traffic recorded from before the connection to
+after the disconnection were also fed through `Meter`: no sample was misjudged as a reset
+and none was discarded. A wake from sleep, an adapter being unplugged and a switch between
+Wi-Fi and wired remain unmeasured.
+
 ---
 
 ## Discussion Log

@@ -93,8 +93,24 @@ and then pulling 2 GB at about 286 MB/s): the largest bytes-per-packet ratio was
 64 KiB); no sample had more than 1 KiB of bytes with zero packets; no stretched
 interval and no counter going backwards. These are the inputs to ADR-0001.
 
-Still to be recorded with it: a wake from sleep, a VPN connecting and
-disconnecting, an adapter being unplugged, a switch between Wi-Fi and wired.
+A second recording (2026-09-20, macOS 27.0, 385 samples of ordinary use, up to
+25.9 MB/s, with a split-tunnel VPN connected for about 71 seconds): the tunnel
+appeared as `utun6` and disappeared again; no stretched interval, no counter
+going backwards, no bytes without packets; the largest bytes-per-packet ratio was
+42,609 — a new maximum, still below 64 KiB.
+
+Replaying a log through the real `Meter` shows what every sample comes out as:
+
+```bash
+NET_METER_REPLAY_LOG=watch.jsonl swift test --filter ReplayTests
+```
+
+For the recording above: on every interface, one baseline and then nothing but
+rates — no sample judged a reset, none discarded. `utun6` started from a baseline
+when it appeared.
+
+Still to be recorded: a wake from sleep, an adapter being unplugged, a switch
+between Wi-Fi and wired, and a full-tunnel VPN.
 
 ## path_order.swift
 
@@ -112,7 +128,10 @@ swiftc -O spikes/path_order.swift -o .build/path_order
 
 What this showed (2026-09-20, macOS 27.0, no VPN, three runs including one by
 `watch`): wired Ethernet first, Wi-Fi second, and **the same interface listed
-twice** — in all three. Behaviour
-while a VPN is connected has not been measured yet; run it with the VPN up and
-check that the tunnel interface appears with type `other` and is skipped, and
-that the physical interface is still in the list.
+twice** — in all three.
+
+With a split-tunnel VPN up (one observation, recorded by `watch`): the tunnel
+interface was appended **at the end** of the list with type `other`, and the
+physical interfaces kept their places — `en0`, `en0`, `en1`, `utun6`. A
+full-tunnel VPN, which takes over the default route, has not been measured and
+may order the list differently.
