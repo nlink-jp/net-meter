@@ -60,6 +60,7 @@ public enum RateFormatter {
             return "\(tenths / 10).\(tenths % 10)"
         }
         // The top unit has nowhere further to go; keep the field width anyway.
-        return String(min(Int(value.rounded()), 999))
+        // Clamped as a Double: converting an unbounded Double to Int traps.
+        return String(Int(min(value, 999).rounded()))
     }
 }

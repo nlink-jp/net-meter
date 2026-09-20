@@ -53,5 +53,6 @@ final class RateFormatterTests: XCTestCase {
         XCTAssertEqual(bytes(-5), "0 KB/s")
         XCTAssertEqual(bytes(.nan), "0 KB/s")
         XCTAssertEqual(bytes(.infinity), "0 KB/s")
+        XCTAssertEqual(bytes(1e300), "999 GB/s", "finite but absurd: clamped, not a trap")
     }
 }

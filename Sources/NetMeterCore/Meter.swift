@@ -41,6 +41,7 @@ public struct Meter: Sendable {
 
     private var tracks: [String: Track] = [:]
     private let historyCapacity: Int
+    private var lastSuccessfulRead: Double?
 
     public init(historyCapacity: Int = Meter.defaultHistoryCapacity) {
         self.historyCapacity = historyCapacity
@@ -50,8 +51,17 @@ public struct Meter: Sendable {
     /// - Returns: the outcome per interface present in the reading.
     @discardableResult
     public mutating func ingest(_ reading: [String: InterfaceCounters], at time: Double) -> [String: SampleOutcome] {
-        // An empty reading is a failed read, not "every interface vanished".
-        guard !reading.isEmpty else { return [:] }
+        // An empty reading is a failed read, not "every interface vanished": one
+        // failure changes nothing. But once reads have been failing for longer
+        // than a sample may span, the last rate is no longer what is happening,
+        // and showing it would be a lie — there is no value until a read succeeds.
+        guard !reading.isEmpty else {
+            if let last = lastSuccessfulRead, time - last > RateRule.maximumInterval {
+                for name in tracks.keys { tracks[name]?.latest = nil }
+            }
+            return [:]
+        }
+        lastSuccessfulRead = time
 
         // An interface that is gone loses its baseline: when it comes back —
         // a tunnel re-created, an adapter replugged — it starts from rule 1.

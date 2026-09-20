@@ -66,8 +66,8 @@ final class DisplayTests: XCTestCase {
     }
 
     func testAColumnKeepsTheHighestRateInItsBucket() {
-        let history = [HistoryPoint(time: 99.2, rate: rate(10, 1)), HistoryPoint(time: 100, rate: rate(3, 9))]
-        XCTAssertEqual(GraphWindow.columns(from: history, now: 100).last!, GraphColumn(down: 10, up: 9))
+        let history = [HistoryPoint(time: 100.5, rate: rate(10, 1)), HistoryPoint(time: 102, rate: rate(3, 9))]
+        XCTAssertEqual(GraphWindow.columns(from: history, now: 103).last!, GraphColumn(down: 10, up: 9))
     }
 
     func testSamplesWithoutAValueLeaveAGapNotAZero() {
@@ -82,9 +82,28 @@ final class DisplayTests: XCTestCase {
 
     func testTheWindowIsAboutAMinute() {
         XCTAssertEqual(Double(GraphWindow.columns) * GraphWindow.secondsPerColumn, 60)
-        let edge = HistoryPoint(time: 40.5, rate: rate(3, 3)), outside = HistoryPoint(time: 39.5, rate: rate(9, 9))
+        let edge = HistoryPoint(time: 45.5, rate: rate(3, 3)), outside = HistoryPoint(time: 44.5, rate: rate(9, 9))
         let columns = GraphWindow.columns(from: [outside, edge], now: 100)
         XCTAssertEqual(columns.first!, GraphColumn(down: 3, up: 3))
+    }
+
+    func testTwoBurstsKeepTheirDistanceAsTheyScrollWhateverThePhase() {
+        // Buckets measured back from `now` made this distance flip between 1 and 2.
+        let bursts = [HistoryPoint(time: 100, rate: rate(9, 9)), HistoryPoint(time: 107, rate: rate(9, 9))]
+        var distances = Set<Int>()
+        var now = 107.0
+        while now < 150 {
+            let filled = GraphWindow.columns(from: bursts, now: now).enumerated().filter { $0.element != nil }.map(\.offset)
+            XCTAssertEqual(filled.count, 2, "both bursts are inside the window at now=\(now)")
+            distances.insert(filled[1] - filled[0])
+            now += 1.013  // a timer that is never exactly on the second
+        }
+        XCTAssertEqual(distances, [1])
+    }
+
+    func testAnAbsurdClockDoesNotTrap() {
+        let history = [HistoryPoint(time: 1, rate: rate(1, 1))]
+        XCTAssertTrue(GraphWindow.columns(from: history, now: 1e30).allSatisfy { $0 == nil })
     }
 
     func testSamplesOlderThanTheWindowOrFromTheFutureAreIgnored() {

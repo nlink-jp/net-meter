@@ -12,6 +12,7 @@ public final class PathOrderMonitor: @unchecked Sendable {
     private let queue = DispatchQueue(label: "jp.nlink.net-meter.path")
     private let lock = NSLock()
     private var order: [PathInterface] = []
+    private var hasDelivered = false
 
     public init() {}
 
@@ -32,8 +33,11 @@ public final class PathOrderMonitor: @unchecked Sendable {
             }
             guard let self else { return }
             self.lock.lock()
-            let changed = order != self.order
+            // The first update is always passed on, even an empty one: offline,
+            // "no interfaces" is the news.
+            let changed = order != self.order || !self.hasDelivered
             self.order = order
+            self.hasDelivered = true
             self.lock.unlock()
             if changed { onChange(order) }
         }

@@ -77,10 +77,14 @@ public enum GraphWindow {
     public static let columns = 12
     public static let secondsPerColumn = 5.0
 
-    /// Buckets a history into columns, oldest first, the newest column ending at
-    /// `now`. A column takes the highest rate in its bucket — a one-second burst
-    /// must not be averaged away. A bucket with no valued sample is nil, so the
-    /// graph leaves a gap instead of drawing zero.
+    /// Buckets a history into columns, oldest first. Buckets are fixed to absolute
+    /// time — slot `floor(time / secondsPerColumn)` — not measured back from `now`:
+    /// measured from `now`, a sample crosses a bucket edge at a moment that depends
+    /// on its own phase, so two bursts drift apart and together as they scroll.
+    /// The newest column is the slot `now` falls in and fills up as it goes.
+    /// A column takes the highest rate in its bucket — a one-second burst must not
+    /// be averaged away. A bucket with no valued sample is nil, so the graph leaves
+    /// a gap instead of drawing zero.
     public static func columns(
         from history: [HistoryPoint],
         now: Double,
@@ -90,11 +94,11 @@ public enum GraphWindow {
         var result = [GraphColumn?](repeating: nil, count: count)
         for point in history {
             guard let rate = point.rate else { continue }
-            let age = now - point.time
-            guard age >= 0 else { continue }
-            let fromRight = Int(age / secondsPerColumn)
-            guard fromRight < count else { continue }
-            let index = count - 1 - fromRight
+            guard point.time <= now else { continue }
+            let slotsAgo = (now / secondsPerColumn).rounded(.down) - (point.time / secondsPerColumn).rounded(.down)
+            // Compared as Doubles first: converting an unbounded Double to Int traps.
+            guard slotsAgo >= 0, slotsAgo < Double(count) else { continue }
+            let index = count - 1 - Int(slotsAgo)
             let existing = result[index] ?? GraphColumn(down: 0, up: 0)
             result[index] = GraphColumn(
                 down: max(existing.down, rate.downBytesPerSecond),

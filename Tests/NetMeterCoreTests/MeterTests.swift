@@ -71,6 +71,22 @@ final class MeterTests: XCTestCase {
         }
     }
 
+    func testReadsFailingForLongerThanASampleMaySpanLeaveNoValueOnDisplay() {
+        var meter = Meter()
+        meter.ingest(["en0": counters(0, 0, 0, 0)], at: 0)
+        let last = meter.ingest(["en0": counters(1_024_000, 0, 1_000, 0)], at: 1)["en0"]
+        meter.ingest([:], at: 2)
+        meter.ingest([:], at: 4)
+        XCTAssertEqual(meter.latest(for: "en0"), last, "within three seconds the last rate still stands")
+        meter.ingest([:], at: 4.5)
+        XCTAssertNil(meter.latest(for: "en0"), "after that it would be a lie")
+        // Recovery is an ordinary long-interval discard, then rates again.
+        XCTAssertEqual(meter.ingest(["en0": counters(2_048_000, 0, 2_000, 0)], at: 600)["en0"], .discarded(.intervalTooLong))
+        guard case .rate = meter.ingest(["en0": counters(2_049_024, 0, 2_001, 0)], at: 601)["en0"] else {
+            return XCTFail("expected a rate after recovery")
+        }
+    }
+
     func testHistoryMarksSamplesWithoutAValueAndIsBounded() {
         var meter = Meter(historyCapacity: 3)
         meter.ingest(["en0": counters(0, 0, 0, 0)], at: 0)
