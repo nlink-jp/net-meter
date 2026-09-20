@@ -1,7 +1,7 @@
 # RFP: net-meter
 
 > Generated: 2026-09-20
-> Status: Draft
+> Status: Implemented — 途中で変わった点は Amendments に記録
 
 ## 1. Problem Statement
 

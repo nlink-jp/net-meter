@@ -1,7 +1,7 @@
 # RFP: net-meter
 
 > Generated: 2026-09-20
-> Status: Draft
+> Status: Implemented — the Amendments record what changed on the way
 
 ## 1. Problem Statement
 

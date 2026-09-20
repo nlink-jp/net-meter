@@ -17,6 +17,15 @@ net-meter はこれだけを行います。
 > macOS 向けリリースは **Developer ID で署名し、Apple の公証（notarize）を受けて**
 > います（staple 済み）。Gatekeeper の警告なしに起動でき、オフラインでも動作します。
 
+## インストール
+
+```bash
+brew install --cask nlink-jp/tap/net-meter
+```
+
+または [GitHub Releases](https://github.com/nlink-jp/net-meter/releases) から署名・公証済みの
+zip を取得して展開し、`NetMeter.app` をアプリケーションフォルダに移動します。
+
 ## 使い方
 
 メニューバーの項目は、上段に上りの速度、下段に下りの速度を表示し、その横に直近 14 秒の

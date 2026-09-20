@@ -17,6 +17,16 @@ monitor. net-meter does only this.
 > macOS releases are **Developer ID signed and Apple-notarized** (stapled). They
 > launch without Gatekeeper prompts and work offline.
 
+## Install
+
+```bash
+brew install --cask nlink-jp/tap/net-meter
+```
+
+Or grab the signed + notarized zip from
+[GitHub Releases](https://github.com/nlink-jp/net-meter/releases), unzip it and
+move `NetMeter.app` to Applications.
+
 ## Using it
 
 The menu bar item shows the upstream rate on the upper line and the downstream

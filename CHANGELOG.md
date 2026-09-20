@@ -4,7 +4,7 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-09-20
 
 ### Added
 
