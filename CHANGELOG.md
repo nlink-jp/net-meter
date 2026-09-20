@@ -4,7 +4,7 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
-## [Unreleased]
+## [0.1.1] - 2026-09-20
 
 ### Fixed
 
@@ -19,7 +19,8 @@ Semantic Versioning.
 ### Changed
 
 - The panel appears directly below the menu bar item, without the popover's
-  arrow, and is kept within the screen. Esc closes it, and so does another app
+  arrow, is kept within the screen, and follows the item when the item moves or
+  changes width. Esc closes it, and so does another app
   coming to the front or a change of Space. While it is open the keyboard
   belongs to the panel.
 
