@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| Status | **Accepted** |
+| Status | **Accepted**; decisions 1, 3, 4, 5 and 6 superseded by [ADR-0004](0004-menubarextra-panel.md) |
 | Date | 2026-09-20 |
 | Binds | net-meter |
 | Decision makers | nlink-jp maintainers |
@@ -90,6 +90,17 @@ started from a terminal probably got through because it was a child of the front
 - **Known limitation, not handled:** content taller than the screen's visible frame (under
   about 566 pt) is clipped at the top and the bottom. It needs a scrolling design.
 - **Not measured with the new panel:** copying an address from the context menu.
+
+### 2026-09-21 — the container is superseded by ADR-0004
+
+A user noticed that, with the panel open, the item was not shown pressed as other menu bar items are.
+Measured on macOS 27.0: the menu bar keeps that highlight only for `NSPopover` and `MenuBarExtra`, through
+private machinery, and no public API lights it for a panel of our own. The panel moved to a `MenuBarExtra`
+window. This decision's reason still stands for `NSPopover` — a probe reproduced the menu ended by the first
+click after launch, 88–97 ms in (2 of 2) — but not for `MenuBarExtra`, where the same menu stayed open
+(3 of 3). Decisions 1, 3, 4, 5 and 6 are superseded; decision 2 (the app never asks to be activated) still
+holds; of decision 7, the content is now built once and kept, pushed to only while open, the update gate
+stays, and the click-and-action matching went with the window.
 
 ## References
 

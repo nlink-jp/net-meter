@@ -32,6 +32,17 @@ RETIRED: dict[str, str] = {
     "monitorClosedAt": "clicks and actions are matched by order, never by time (PanelToggle)",
     "PopoverClick": "renamed PanelClick when the popover went (ADR-0003)",
     "popoverDidClose": "the panel is a non-activating NSPanel with one close path, hidePanel (ADR-0003)",
+    # ADR-0004: the item and the panel are a MenuBarExtra window; everything that
+    # owning a window of our own required went with it.
+    "PanelToggle": "SwiftUI handles the click on the item (ADR-0004)",
+    "PanelClick": "SwiftUI closes the panel on an outside click (ADR-0004)",
+    "PanelPlacement": "SwiftUI places the MenuBarExtra window (ADR-0004)",
+    "PanelWindow": "the panel is a MenuBarExtra window (ADR-0004)",
+    "statusItemOwns": "no click on the item is handled by the app (ADR-0004)",
+    "contentSizeChanged": "MenuBarExtra sizes its window to the content's ideal size (ADR-0004)",
+    "NET_METER_TRACE_CYCLE": "the item's window position no longer matters to the app (ADR-0004)",
+    "hidePanel": "the app learns that the panel closed from PanelHost's onDisappear (ADR-0004)",
+    "showPanel": "the app learns that the panel opened from PanelHost's onAppear (ADR-0004)",
 }
 
 SEARCHED_DIRS = ("Sources", "Tests", "docs", "spikes")

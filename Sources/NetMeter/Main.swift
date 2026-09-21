@@ -4,9 +4,6 @@ import NetMeterCore
 @main
 @MainActor
 enum Main {
-    /// Held strongly because `NSApplication.delegate` is a weak reference.
-    static var delegate: AppDelegate?
-
     static func main() {
         // Two instances would stack two menu bar items and sample twice.
         // LSMultipleInstancesProhibited (Info.plist) stops LaunchServices
@@ -25,11 +22,8 @@ enum Main {
             exit(0)
         }
 
-        let application = NSApplication.shared
-        let appDelegate = AppDelegate()
-        delegate = appDelegate
-        application.delegate = appDelegate
-        application.setActivationPolicy(.accessory)
-        application.run()
+        // An accessory app through LSUIElement in Info.plist; the delegate is
+        // SwiftUI's (`@NSApplicationDelegateAdaptor`).
+        NetMeterApp.main()
     }
 }

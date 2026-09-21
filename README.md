@@ -87,7 +87,8 @@ menu bar item appears.
 - [RFP](docs/en/net-meter-rfp.md) — scope, behaviour and the design decisions behind them
 - [ADR-0001](docs/en/adr/0001-counter-readings-to-rates.md) — how counter readings become rates, and when a sample is thrown away
 - [ADR-0002](docs/en/adr/0002-menu-bar-drawing.md) — how the menu bar item is drawn
-- [ADR-0003](docs/en/adr/0003-non-activating-panel.md) — why the panel is a non-activating panel, not a popover
+- [ADR-0003](docs/en/adr/0003-non-activating-panel.md) — why the panel left the popover (its container is superseded by ADR-0004)
+- [ADR-0004](docs/en/adr/0004-menubarextra-panel.md) — why the item and the panel are a `MenuBarExtra` window
 - [Spikes](spikes/README.md) — the measurements the design rests on
 
 ## License

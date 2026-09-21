@@ -6,6 +6,18 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- **The menu bar item now stays highlighted while the panel is open**, like every
+  other menu bar item. It used to lose the highlight the moment the mouse button
+  came up. macOS 27 keeps that highlight only for the panels it provides itself,
+  so the item and the panel are now a SwiftUI `MenuBarExtra` window
+  ([ADR-0004](docs/en/adr/0004-menubarextra-panel.md)). What the panel shows and
+  how it behaves are unchanged: it opens below the item, the settings' pop-up
+  menus work from the first click after launch, and Esc, a click elsewhere, a
+  click on the item, switching to another app or changing Space closes it. It
+  never switches you away from the app you are working in.
+
 ### Documentation
 
 - **The CPU figure was wrong by about four times.** 0.1.0's notes say "about 0.3%

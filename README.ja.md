@@ -82,7 +82,8 @@ make run
 - [RFP](docs/ja/net-meter-rfp.ja.md) — スコープ、挙動、その背景にある設計判断
 - [ADR-0001](docs/ja/adr/0001-counter-readings-to-rates.ja.md) — カウンタの読み取りを速度に変える規則と、サンプルを捨てる条件
 - [ADR-0002](docs/ja/adr/0002-menu-bar-drawing.ja.md) — メニューバー項目の描画方式
-- [ADR-0003](docs/ja/adr/0003-non-activating-panel.ja.md) — パネルをポップオーバーではなく、アクティブ化しないパネルにした理由
+- [ADR-0003](docs/ja/adr/0003-non-activating-panel.ja.md) — パネルがポップオーバーを離れた理由（器は ADR-0004 で置き換え）
+- [ADR-0004](docs/ja/adr/0004-menubarextra-panel.ja.md) — 項目とパネルを `MenuBarExtra` の窓にした理由
 - [スパイク](spikes/README.md) — 設計の根拠になった実測
 
 ## ライセンス

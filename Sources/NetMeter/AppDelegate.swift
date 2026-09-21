@@ -4,12 +4,12 @@ import NetMeterSystem
 import NetMeterUI
 import SwiftUI
 
-/// Wiring only: the OS sources, the one-second timer, the status item and the
-/// panel's window.
+/// Wiring only: the OS sources, the one-second timer, and the state the menu bar
+/// item and the panel show. The item and the panel's window are SwiftUI's
+/// `MenuBarExtra` (ADR-0004); this object never touches either directly.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem?
-    private var controller: MeterController?
+    let controller: MeterController
     private let pathMonitor = PathOrderMonitor()
     private let infoSource = SystemInterfaceInfoSource()
     private let loginItem = LoginItemService()
@@ -17,29 +17,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Held for the app's lifetime: App Nap would otherwise freeze the timer of
     /// an app with no visible window, hours after launch.
     private var activity: NSObjectProtocol?
-    private var now: () -> Double = { 0 }
+    private let now: () -> Double
 
-    /// A non-activating panel (ADR-0003). The app never asks to be activated.
-    private let panel = PanelWindow()
-    /// Whether the panel is open is this boolean, set in `showPanel` and
-    /// `hidePanel` and nowhere else — not something read back from the window.
-    private var panelOpen = false
-    #if TRACE
-    var traceItemFrame: CGRect? { statusItem?.button?.window?.frame }
-    var tracePanelShown: Bool { panelOpen }
-    #endif
-    /// Exists only while the panel is open.
-    private var panelModel: PanelModel?
-    /// What the content last said it needs; the window is placed from it.
-    private var panelContentSize = CGSize(width: PanelView.width, height: 400)
-    private var clickMonitors: [Any] = []
-    /// One click on the status item reaches two handlers; see PanelToggle.
-    private var panelToggle = PanelToggle()
+    /// What the item shows; `StatusLabel` draws it (ADR-0002). An object of its
+    /// own, so that the once-a-second change reaches the label and nothing else.
+    let statusModel: StatusModel
+
+    /// One model for the app's lifetime, pushed to only while the panel is open:
+    /// the window's content is built by `MenuBarExtra`, not here.
+    let panelModel: PanelModel
+    /// Whether the panel is open is this boolean, set when its content appears
+    /// and disappears and nowhere else.
+    private(set) var panelOpen = false
     /// Refreshes wait while one of the panel's menus is open; see PanelUpdateGate.
     private var updateGate = PanelUpdateGate()
     /// Why launch at login could not be changed; shown until the next attempt or
     /// until the panel closes.
     private var loginItemError: String?
+
+    override init() {
+        // Seconds on a clock that keeps running during sleep (ADR-0001).
+        let clock = ContinuousClock()
+        let start = clock.now
+        let now: () -> Double = {
+            let elapsed = clock.now - start
+            return Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        }
+        self.now = now
+        let pathMonitor = self.pathMonitor
+        let controller = MeterController(
+            counters: SysctlCounterSource(),
+            pathOrder: { pathMonitor.current },
+            now: now,
+            store: UserDefaultsSettingsStore()
+        )
+        self.controller = controller
+        statusModel = StatusModel(
+            status: controller.content,
+            coloured: controller.settings.coloured,
+            spoken: UIStrings.spoken(controller.content.reading, unit: controller.content.unit)
+        )
+        // A placeholder until the panel first opens: `panelDidOpen` replaces it
+        // before anything is drawn.
+        panelModel = PanelModel(snapshot: controller.panelSnapshot(
+            info: [:], pathOrder: [], loginItem: .off,
+            version: displayVersion(bundleShortVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String),
+            now: now()
+        ))
+        super.init()
+        panelModel.changeSettings = { [weak self] in
+            #if TRACE
+            Trace.log("SETTINGS unit=\($0.unit) mode=\($0.displayMode) selection=\($0.selection) coloured=\($0.coloured)")
+            #endif
+            self?.controller.settings = $0
+        }
+        panelModel.setLoginItem = { [weak self] on in
+            guard let self else { return }
+            #if TRACE
+            Trace.log("LOGINITEM set=\(on)")
+            #endif
+            do {
+                try self.loginItem.set(on)
+                self.loginItemError = nil
+            } catch {
+                self.loginItemError = error.localizedDescription
+            }
+            self.panelModel.snapshot = self.snapshot()
+        }
+        panelModel.quit = { NSApp.terminate(nil) }
+        controller.onChange = { [weak self] in self?.render() }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         activity = ProcessInfo.processInfo.beginActivity(
@@ -47,48 +94,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reason: "Sampling network interface counters once a second"
         )
 
-        // Seconds on a clock that keeps running during sleep (ADR-0001).
-        let clock = ContinuousClock()
-        let start = clock.now
-        now = {
-            let elapsed = clock.now - start
-            return Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-        }
-
-        let controller = MeterController(
-            counters: SysctlCounterSource(),
-            pathOrder: { [pathMonitor] in pathMonitor.current },
-            now: now,
-            store: UserDefaultsSettingsStore()
-        )
-        controller.onChange = { [weak self] in self?.render() }
-        self.controller = controller
-
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.imagePosition = .imageOnly
-        item.button?.target = self
-        item.button?.action = #selector(togglePanel)
-        statusItem = item
-
-        panel.onCancel = { [weak self] in self?.hidePanel() }
-
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(menuDidBeginTracking), name: NSMenu.didBeginTrackingNotification, object: nil)
         center.addObserver(self, selector: #selector(menuDidEndTracking), name: NSMenu.didEndTrackingNotification, object: nil)
 
-        // The user can go elsewhere without a mouse-down: another app comes to the
-        // front (Cmd-Tab), or the Space changes. A popover closed itself then; a
-        // non-activating panel is told nothing, stays where it was — out of sight
-        // after a Space change — and the next click on the item would close a panel
-        // nobody can see. Both go down the one close path.
-        center.addObserver(self, selector: #selector(itemWindowMoved), name: NSWindow.didMoveNotification, object: nil)
-
-        let workspace = NSWorkspace.shared.notificationCenter
-        workspace.addObserver(self, selector: #selector(userWentElsewhere), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(anotherAppCameForward), name: NSWorkspace.didActivateApplicationNotification, object: nil)
-
         pathMonitor.start { [weak self] _ in
-            Task { @MainActor in self?.controller?.refresh() }
+            Task { @MainActor in self?.controller.refresh() }
         }
 
         // `.common`, not the default mode: the run loop leaves the default mode
@@ -105,38 +116,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func tick() {
-        controller?.tick()
+        controller.tick()
     }
 
     private func render() {
-        guard let controller, let item = statusItem, let button = item.button else { return }
         let content = controller.content
-        let width = StatusRenderer.size(mode: content.mode).width
-        if item.length != width {
-            // Changing the display mode from inside the panel resizes the item the
-            // panel hangs from. Nothing is placed here: see `itemWindowMoved`.
-            item.length = width
-        }
-
-        // ADR-0002: the button reports the menu bar's own appearance, which can
-        // differ from the system's.
-        let dark = button.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let finish: StatusFinish = controller.settings.coloured ? .coloured(darkMenuBar: dark) : .template
-        button.image = StatusRenderer.image(content: content, finish: finish)
-        button.setAccessibilityLabel("net-meter")
-        button.setAccessibilityValue(UIStrings.spoken(content.reading, unit: content.unit))
-
-        // The panel is only kept up to date while it is open.
+        statusModel.status = content
+        statusModel.coloured = controller.settings.coloured
+        statusModel.spoken = UIStrings.spoken(content.reading, unit: content.unit)
         #if TRACE
-        if panelModel != nil { Trace.log("PUSH    unit=\(controller.settings.unit) mode=\(controller.settings.displayMode) held=\(updateGate.trackingDepth > 0) content=\(Int(panelContentSize.width))x\(Int(panelContentSize.height)) active=\(NSApp.isActive)") }
+        if panelOpen { Trace.log("PUSH    unit=\(controller.settings.unit) mode=\(controller.settings.displayMode) held=\(updateGate.trackingDepth > 0)") }
         #endif
         pushPanelUpdate()
     }
 
     // MARK: the panel
 
+    /// From the panel content's `onAppear`: the snapshot is brought up to date
+    /// before the first frame, then kept so once a second.
+    func panelDidOpen() {
+        #if TRACE
+        Trace.log("OPEN    active=\(NSApp.isActive) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")")
+        #endif
+        panelOpen = true
+        panelModel.snapshot = snapshot()
+    }
+
+    /// From the panel content's `onDisappear`, however the window was closed.
+    func panelDidClose() {
+        #if TRACE
+        Trace.log("CLOSE")
+        #endif
+        panelOpen = false
+        loginItemError = nil
+        updateGate.reset()
+    }
+
     private func pushPanelUpdate() {
-        guard let panelModel, updateGate.shouldDeliverUpdate() else { return }
+        guard panelOpen, updateGate.shouldDeliverUpdate() else { return }
         panelModel.snapshot = snapshot()
     }
 
@@ -156,8 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func snapshot() -> PanelSnapshot {
-        guard let controller else { fatalError("the controller exists before anything asks for a snapshot") }
-        return controller.panelSnapshot(
+        controller.panelSnapshot(
             info: infoSource.info(),
             pathOrder: pathMonitor.current,
             loginItem: loginItem.state,
@@ -168,190 +184,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             now: now()
         )
     }
+}
 
-    @objc private func togglePanel() {
-        #if TRACE
-        Trace.log("ACTION  event=\(NSApp.currentEvent.map { "\($0.type.rawValue)#\($0.eventNumber)" } ?? "nil") active=\(NSApp.isActive) shown=\(panelOpen) awaiting=\(panelToggle.awaitingActionOfClosingClick)")
-        #endif
-        switch panelToggle.statusItemAction(panelShown: panelOpen) {
-        case .open: showPanel()
-        case .close: hidePanel()
-        case .none: syncClickMonitors()
-        }
-    }
+/// The menu bar item's state, observed by `StatusLabel` only.
+@MainActor
+final class StatusModel: ObservableObject {
+    @Published var status: StatusContent
+    @Published var coloured: Bool
+    @Published var spoken: String
 
-    @objc private func userWentElsewhere() {
-        #if TRACE
-        if panelOpen { Trace.log("SPACE   changed") }
-        #endif
-        hidePanel()
-    }
-
-    @objc private func anotherAppCameForward(_ note: Notification) {
-        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-        guard app?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
-        #if TRACE
-        if panelOpen { Trace.log("FRONT   \(app?.bundleIdentifier ?? "nil")") }
-        #endif
-        hidePanel()
-    }
-
-    /// The one way the panel closes: a click elsewhere, a click on the item, Esc,
-    /// another app coming forward, a Space change. The content, the model and the
-    /// update gate are released here and nowhere else, and the click monitors are
-    /// brought in line — they stay only until a closing click's action has been
-    /// dealt with (PanelToggle). Safe to call when the panel is already closed.
-    private func hidePanel() {
-        #if TRACE
-        if panelOpen { Trace.log("HIDE") }
-        #endif
-        if panelOpen {
-            panelOpen = false
-            panel.orderOut(nil)
-            panel.clearContent()
-            panelModel = nil
-            loginItemError = nil
-            updateGate.reset()
-        }
-        syncClickMonitors()
-    }
-
-    /// The panel follows the item's window. Setting the item's length resizes that
-    /// window at once but leaves it where it was, its right edge in the wrong place;
-    /// the menu bar puts it right 29–41 ms later and this notification follows
-    /// (measured, three changes out of three). Placing on the next turn of the run
-    /// loop read the in-between frame and left the panel up to 57 pt off. The same
-    /// notification covers an item pushed along by its neighbours coming and going.
-    @objc private func itemWindowMoved(_ note: Notification) {
-        guard panelOpen, let window = note.object as? NSWindow, window === statusItem?.button?.window else { return }
-        placePanel()
-    }
-
-    /// Below the status item, within the screen the item is on.
-    private func placePanel() {
-        guard let button = statusItem?.button, let itemWindow = button.window else { return }
-        let itemFrame = itemWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        let visible = (itemWindow.screen ?? NSScreen.main)?.visibleFrame ?? itemFrame
-        let frame = PanelPlacement.frame(itemFrame: itemFrame, panelSize: panelContentSize, visibleFrame: visible)
-        if frame != panel.frame {
-            panel.setFrame(frame, display: true)
-            #if TRACE
-            Trace.log("PLACE   frame=\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))")
-            #endif
-        }
-    }
-
-    private func showPanel() {
-        guard statusItem?.button != nil, controller != nil else { return }
-
-        // Built on open and released on close: a SwiftUI tree that exists while
-        // hidden keeps laying out.
-        let model = PanelModel(snapshot: snapshot())
-        model.changeSettings = { [weak self] in
-            #if TRACE
-            Trace.log("SETTINGS unit=\($0.unit) mode=\($0.displayMode) selection=\($0.selection) coloured=\($0.coloured)")
-            #endif
-            self?.controller?.settings = $0
-        }
-        model.setLoginItem = { [weak self] on in
-            guard let self else { return }
-            #if TRACE
-            Trace.log("LOGINITEM set=\(on)")
-            #endif
-            do {
-                try self.loginItem.set(on)
-                self.loginItemError = nil
-            } catch {
-                self.loginItemError = error.localizedDescription
-            }
-            self.panelModel?.snapshot = self.snapshot()
-        }
-        model.quit = { NSApp.terminate(nil) }
-        model.contentSizeChanged = { [weak self] size in
-            guard let self, self.panelOpen, size != self.panelContentSize else { return }
-            self.panelContentSize = size
-            self.placePanel()
-        }
-        panelModel = model
-
-        panelContentSize = panel.setContent(PanelView(model: model))
-        placePanel()
-        panelOpen = true
-        // Key, so that Esc and text selection work — and nothing more than key:
-        // the app is not activated and does not ask to be (ADR-0003). The first
-        // release asked, and right after launch the OS refused; the first click in
-        // the panel then activated the app and ended the menu it had just opened.
-        panel.makeKeyAndOrderFront(nil)
-        syncClickMonitors()
-        #if TRACE
-        Trace.log("SHOW    active=\(NSApp.isActive) key=\(panel.isKeyWindow) visible=\(panel.isVisible) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")")
-        #endif
-    }
-
-    /// Nothing tells a non-activating panel that the user clicked somewhere else,
-    /// so outside clicks are watched explicitly. The monitors live while the panel
-    /// is open and, after a click on the item closed it, until that click's action
-    /// has been dealt with.
-    private func syncClickMonitors() {
-        let needed = panelToggle.needsMonitor(panelShown: panelOpen)
-        if needed, clickMonitors.isEmpty {
-            let events: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown]
-            let global = NSEvent.addGlobalMonitorForEvents(matching: events) { [weak self] event in
-                // A global monitor's location is already in screen coordinates.
-                // The event is not Sendable: read what is needed out here.
-                let location = event.locationInWindow
-                MainActor.assumeIsolated { self?.globalMouseDown(at: location) }
-            }
-            let local = NSEvent.addLocalMonitorForEvents(matching: events) { [weak self] event in
-                let window = event.window, location = event.locationInWindow
-                MainActor.assumeIsolated { self?.localMouseDown(in: window, at: location) }
-                return event
-            }
-            clickMonitors = [global, local].compactMap { $0 }
-        } else if !needed, !clickMonitors.isEmpty {
-            clickMonitors.forEach(NSEvent.removeMonitor)
-            clickMonitors = []
-        }
-    }
-
-    /// Anything outside the app — which on macOS 27 includes our own status item,
-    /// because another process hosts the menu bar.
-    private func globalMouseDown(at location: CGPoint) {
-        // The frame is read now: the item's width changes with the display mode.
-        let onItem = statusItemOwns(location, itemWindowFrame: statusItem?.button?.window?.frame)
-        #if TRACE
-        Trace.log("GMON    onItem=\(onItem) shown=\(panelOpen)")
-        #endif
-        if panelToggle.globalMouseDown(panelShown: panelOpen, onStatusItem: onItem) == .close {
-            hidePanel()
-        } else {
-            syncClickMonitors()
-        }
-    }
-
-    /// A mouse-down inside the app.
-    private func localMouseDown(in window: NSWindow?, at location: NSPoint) {
-        let click: PanelClick
-        if window === statusItem?.button?.window {
-            click = .statusButton
-        } else if let window, window === panel || window.parent === panel {
-            // The panel itself, or a menu one of its pickers opened.
-            click = .insidePanel
-        } else {
-            click = .elsewhere
-        }
-        #if TRACE
-        let hit = window?.contentView?.superview?.hitTest(location) ?? window?.contentView?.hitTest(location)
-        Trace.log("LMON    click=\(click) key=\(window?.isKeyWindow ?? false) active=\(NSApp.isActive) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil") content=\(Int(panelContentSize.width))x\(Int(panelContentSize.height)) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil") at=(\(Int(location.x)),\(Int(location.y))) window=\(window.map { String(describing: type(of: $0)) } ?? "nil")")
-        #endif
-        if click.closesPanel, panelOpen { hidePanel() }
+    init(status: StatusContent, coloured: Bool, spoken: String) {
+        self.status = status
+        self.coloured = coloured
+        self.spoken = spoken
     }
 }
 
 #if TRACE
 /// Diagnostic build only (`make build-app SWIFT_FLAGS="-Xswiftc -DTRACE" DIST_DIR=dist/trace`):
-/// records mouse-downs, button actions, menu tracking, activation and what the
-/// panel does about them. Never compiled into a release; `make verify-release`
+/// records mouse-downs, menu tracking, activation, key windows and the panel's
+/// opening and closing. Never compiled into a release; `make verify-release`
 /// looks for these symbols in the binary.
 @MainActor
 enum Trace {
@@ -381,76 +233,26 @@ enum Trace {
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseUp]
         let global = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak delegate] event in
             let location = event.locationInWindow, type = event.type.rawValue, number = event.eventNumber
-            MainActor.assumeIsolated { delegate?.traceMouse("GLOBAL", type: type, number: number, location: location) }
+            MainActor.assumeIsolated {
+                log("GLOBAL type=\(type == 1 ? "down" : "up")#\(number) at=(\(Int(location.x)),\(Int(location.y))) active=\(NSApp.isActive) open=\(delegate?.panelOpen ?? false)")
+            }
         }
         let local = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak delegate] event in
             let location = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) } ?? event.locationInWindow
-            let type = event.type.rawValue, number = event.eventNumber
-            MainActor.assumeIsolated { delegate?.traceMouse("LOCAL ", type: type, number: number, location: location) }
+            let kind = event.type.rawValue, number = event.eventNumber
+            let window = event.window.map { String(describing: Swift.type(of: $0)) } ?? "nil"
+            MainActor.assumeIsolated {
+                log("LOCAL  type=\(kind == 1 ? "down" : "up")#\(number) at=(\(Int(location.x)),\(Int(location.y))) window=\(window) active=\(NSApp.isActive) open=\(delegate?.panelOpen ?? false)")
+            }
             return event
         }
         monitors = [global, local].compactMap { $0 }
-
-        // Where the item's window is, and when it gets there, after the item's
-        // length changes — the panel hangs from it.
-        for (name, label) in [(NSWindow.didMoveNotification, "ITEMWIN moved"), (NSWindow.didResizeNotification, "ITEMWIN resized")] {
-            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak delegate] note in
-                let window = note.object as? NSWindow
-                MainActor.assumeIsolated {
-                    guard let delegate, let window, window === delegate.traceItemWindow else { return }
-                    log("\(label) item=\(delegate.traceItemFrameText)")
-                }
-            })
-        }
-        if ProcessInfo.processInfo.environment["NET_METER_TRACE_CYCLE"] != nil {
-            delegate.traceCycleDisplayModes()
-        }
     }
 
     static func log(_ message: String) {
         let elapsed = ContinuousClock().now - start
         let ms = Int(elapsed.components.seconds) * 1000 + Int(elapsed.components.attoseconds / 1_000_000_000_000_000)
         handle?.write(Data("\(ms) \(message)\n".utf8))
-    }
-}
-
-extension AppDelegate {
-    var traceItemWindow: NSWindow? { statusItem?.button?.window }
-    var traceItemFrameText: String {
-        guard let frame = traceItemFrame else { return "nil" }
-        return "x=\(Int(frame.minX))..\(Int(frame.maxX)) w=\(Int(frame.width))"
-    }
-
-    /// `NET_METER_TRACE_CYCLE`: goes through the display modes and back to the one
-    /// in use, without the panel and without a click, and records where the item's
-    /// window is at several moments after each change.
-    func traceCycleDisplayModes() {
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(4))
-            guard let self, let controller = self.controller else { return }
-            let original = controller.settings.displayMode
-            for mode in DisplayMode.allCases.filter({ $0 != original }) + [original] {
-                Trace.log("CYCLE   before mode=\(controller.settings.displayMode) item=\(self.traceItemFrameText)")
-                var settings = controller.settings
-                settings.displayMode = mode
-                controller.settings = settings
-                let changed = ContinuousClock().now
-                Trace.log("CYCLE   set mode=\(mode) item=\(self.traceItemFrameText)")
-                DispatchQueue.main.async { Trace.log("CYCLE   next-turn item=\(self.traceItemFrameText)") }
-                for ms in [20, 50, 100, 200, 400, 800, 1600] {
-                    try? await Task.sleep(until: changed + .milliseconds(ms), clock: .continuous)
-                    Trace.log("CYCLE   +\(ms)ms item=\(self.traceItemFrameText)")
-                }
-                try? await Task.sleep(for: .milliseconds(900))
-            }
-            Trace.log("CYCLE   done")
-        }
-    }
-
-    func traceMouse(_ source: String, type: UInt, number: Int, location: CGPoint) {
-        let frame = traceItemFrame
-        let onItem = statusItemOwns(location, itemWindowFrame: frame)
-        Trace.log("\(source) type=\(type == 1 ? "down" : "up")#\(number) onItem=\(onItem) active=\(NSApp.isActive) shown=\(tracePanelShown)")
     }
 }
 #endif

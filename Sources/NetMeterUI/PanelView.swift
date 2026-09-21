@@ -38,10 +38,9 @@ public struct PanelView: View {
         }
         .padding(Self.padding)
         .frame(width: Self.width)
-        // The height the content needs, whatever height the window offers right
-        // now: the window is sized from this report, not the other way round.
+        // The height the content needs, whatever height the window offers:
+        // `MenuBarExtra` sizes its window to the content's ideal size (ADR-0004).
         .fixedSize(horizontal: false, vertical: true)
-        .onGeometryChange(for: CGSize.self, of: { $0.size }, action: { model.contentSizeChanged($0) })
     }
 
     // MARK: sections

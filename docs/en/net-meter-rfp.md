@@ -96,11 +96,13 @@ None. Only OS standard frameworks are used. The app itself makes no network conn
 **Language and frameworks**
 
 - Swift 6 (strict concurrency) with Swift Package Manager.
-- The menu bar item is custom-drawn on an AppKit `NSStatusItem`. SwiftUI's `MenuBarExtra`
-  is not used because it does not suit a custom two-line layout updated every second.
-- The panel is SwiftUI hosted in ~~an `NSPopover`~~ a non-activating `NSPanel` (2026-09-20:
-  Amendment A13, ADR-0003), with the history graph drawn by Swift
-  Charts. Panel content is created when the panel opens and released when it closes.
+- The menu bar item is custom-drawn ~~on an AppKit `NSStatusItem`. SwiftUI's `MenuBarExtra`
+  is not used because it does not suit a custom two-line layout updated every second.~~ and shown as
+  the label of a SwiftUI `MenuBarExtra` (2026-09-21: Amendment A14, ADR-0004).
+- The panel is SwiftUI hosted in ~~an `NSPopover`~~ ~~a non-activating `NSPanel` (2026-09-20:
+  Amendment A13, ADR-0003)~~ the `MenuBarExtra`'s window (A14), with the history graph drawn by Swift
+  Charts. Panel content is ~~created when the panel opens and released when it closes~~ built on the first
+  open and pushed to only while the panel is open (A14).
 - Supported environment: macOS 26 or later, Apple Silicon only.
 
 **How the data is read**
@@ -358,6 +360,21 @@ activated. Under the same condition (the first click, 21.8 s after launch) the m
 for 1,906 ms and no activation happened at all (one run). The popover's arrow is gone; the panel
 appears directly below the item. The full decision, the rejected alternatives and the prior
 implementations are in ADR-0003.
+
+### 2026-09-21 — Amendment after a report on the item's highlight
+
+**A14. The item and the panel are a SwiftUI `MenuBarExtra` window (correction to §3; supersedes A13's
+container; ADR-0004)**
+The user noticed that while the panel was open the item was not shown pressed, as other menu bar
+items are, and that apps built on `MenuBarExtra` did show it. Measured on macOS 27.0: the menu bar
+keeps that highlight only for `NSPopover` and `MenuBarExtra`, each through private machinery inside
+the framework; no public API lights it for a panel of our own, and this project does not use private
+API. A13's reason for leaving the popover was checked against `MenuBarExtra` and did not apply: a
+pop-up menu opened right after a LaunchServices launch stayed open (3 of 3), where a popover ended
+it 88–97 ms in (2 of 2). §3's reason for not using `MenuBarExtra` was checked too and did not hold:
+net-meter's own two-line image shows as its label and updates once a second. The verification — the
+highlight, the menus, every way of closing, the label's appearance, CPU while closed — is recorded in
+ADR-0004.
 
 ---
 

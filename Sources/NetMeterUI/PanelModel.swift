@@ -1,5 +1,4 @@
 import Combine
-import CoreGraphics
 import NetMeterCore
 
 /// Everything the panel shows at one moment, as a value.
@@ -54,9 +53,6 @@ public final class PanelModel: ObservableObject {
     public var changeSettings: (AppSettings) -> Void = { _ in }
     public var setLoginItem: (Bool) -> Void = { _ in }
     public var quit: () -> Void = {}
-    /// The size the content needs, whenever it changes — a note appears, the
-    /// address list grows. The window follows it (ADR-0003).
-    public var contentSizeChanged: (CGSize) -> Void = { _ in }
 
     public init(snapshot: PanelSnapshot) {
         self.snapshot = snapshot

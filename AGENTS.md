@@ -4,8 +4,8 @@
 
 macOS menu bar app (util-series) that shows the current upstream/downstream rate
 of one network interface, as numbers and a graph. Swift 6 (strict concurrency),
-Swift Package Manager, AppKit `NSStatusItem` + a SwiftUI panel in a non-activating
-`NSPanel` (ADR-0003), macOS 26+,
+Swift Package Manager, a SwiftUI `MenuBarExtra` window whose label is the app's
+own drawing (ADR-0004; before it a non-activating panel, ADR-0003), macOS 26+,
 Apple Silicon. GUI only — there is no CLI. Bundle id `jp.nlink.net-meter`;
 the app bundle is `NetMeter.app`, the repository and the cask are `net-meter`.
 
@@ -20,8 +20,9 @@ not track progress — `git log` and `CHANGELOG.md` do.
 
 **Not yet measured** (the rules are built to fail safe whatever these show): a
 wake from sleep, an adapter being unplugged, a switch between Wi-Fi and wired, a
-full-tunnel VPN, a light menu bar with the coloured finish, and a Mac with
-displays of mixed scale.
+full-tunnel VPN, a light menu bar with the coloured finish, a Mac with
+displays of mixed scale, and the `MenuBarExtra` window on macOS 26 (everything in
+ADR-0004's verification was measured on macOS 27.0).
 
 ## Build & test
 
@@ -73,10 +74,7 @@ Sources/
                            GraphWindow: the last 14 samples, one bar each — no time buckets
     GraphScale.swift       Shared up/down full scale with a floor; eased(previous:target:) — up at once, down by 20% a sample
     PanelUpdateGate.swift  Holds panel refreshes while one of the panel's menus is tracking; one is delivered after
-    Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points,
-                           PanelClick.closesPanel, PanelToggle (one click, two handlers, matched by order)
-    PanelPlacement.swift   frame(itemFrame:panelSize:visibleFrame:) — below the item, centred, kept on the screen
-    StatusItemHit.swift    statusItemOwns(location, itemWindowFrame:) — the measured region, top-left ownership
+    Panel.swift            PanelFormat (byte totals, link speed), PanelHistory chart points
     LoginItem.swift        LoginItemState: unavailable | off | on | requiresApproval
     SettingsStore.swift    SettingsStore protocol + the in-memory store tests use
     SymbolName.swift       The one place an SF Symbol name may be spelled (empty: the app draws its own arrows)
@@ -94,21 +92,22 @@ Sources/
     StatusRenderer.swift   ADR-0002: (StatusContent, StatusFinish) -> image with 1x and 2x representations; width by display mode alone
     MeterController.swift  Readings -> what is on display; every OS dependency injected; a setting reaches the display at once
     PanelModel.swift       PanelSnapshot (a value, settings and the last action's error included) + the one ObservableObject
-    PanelView.swift        The SwiftUI panel: fixed width, height from content — and it reports that height;
-                           Swift Charts history with a fixed window and scale
-    PanelWindow.swift      ADR-0003: the `.nonactivatingPanel` NSPanel the panel lives in; key but never main, Esc to
-                           the owner, popover material drawn active, no safe area from the hidden title bar
+    PanelView.swift        The SwiftUI panel: fixed width, its ideal height whatever it is offered (the window is
+                           sized to it); Swift Charts history with a fixed window and scale
     UIStrings.swift        Every user-visible string, one language throughout; a test requires each to be in use
   NetMeter/              Executable: wiring only
-    Main.swift             @main enum; single-instance guard, then the accessory-policy app
-    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, status item rendering, and the panel:
-                           content built on open and released on close, one close path, click monitors, placement;
-                           a click/action recorder under `#if TRACE` only
+    Main.swift             @main enum; single-instance guard, then the SwiftUI app (LSUIElement makes it an accessory)
+    NetMeterApp.swift      ADR-0004: MenuBarExtra(.window) — StatusLabel draws StatusModel with the one renderer,
+                           PanelHost reports the panel opening and closing (onAppear / onDisappear)
+    AppDelegate.swift      OS sources, 1 s timer in .common mode, App Nap token, StatusModel (the label's only input)
+                           and the one PanelModel, pushed to only while the panel is open; the menu-tracking gate;
+                           a recorder under `#if TRACE` only
 Tests/
   NetMeterCoreTests/     Pure. ReplayTests is opt-in
   NetMeterSystemTests/   Live, against this Mac
   NetMeterUITests/       Offscreen: the status item pixel by pixel, the panel through the real layout engine,
-                         the controller and the panel snapshot with scripted sources
+                         the controller and the panel snapshot with scripted sources; MenuBarShapeTests keeps
+                         the app layer in the shape ADR-0004 measured (by reading the sources)
 scripts/
   codesign-darwin-app.sh notarize-darwin-app.sh gen-brew.sh release-brew.mk cask.rb.tmpl
                          Vendored byte-identical from nlink-jp/.github/templates — never edit here
@@ -206,109 +205,68 @@ building the thing it is about.
   `ProcessInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep])`
   token for the app's lifetime. (KB: "メニューバー常駐アプリは SwiftUI 単体では
   完結しない")
-- **Menu bar drawing uses `NSStatusItem`, not `MenuBarExtra`.** A `MenuBarExtra`
-  label is a static image updated on state change; it suits neither a custom
-  two-line layout nor a per-second redraw. (KB: "連続アニメするメニューバー
-  アイコンは NSStatusItem で")
+- **The item is a `MenuBarExtra` label: `Image(nsImage:)` of the one renderer
+  (ADR-0004).** A label is an image re-rendered when its state changes, which is
+  wrong for a continuous ~30 fps animation (KB: "連続アニメするメニューバー
+  アイコンは NSStatusItem で") but right for this item: net-meter's own two-line
+  image changed once a second, filmed in both finishes (macOS 27.0). Until
+  ADR-0004 this entry said the opposite, from that KB entry, without measuring
+  the once-a-second case.
 - **Template rendering and colour exclude each other; ADR-0002 is how both are
-  served.** `isTemplate` is honoured only in `button.image` — an image inside an
-  attributed title keeps the colour it was given and ignores the menu bar's
-  appearance. A template image follows the menu bar but cannot carry colour; with
+  served.** A template image follows the menu bar but cannot carry colour; with
   `isTemplate = false` the given colours are baked in and nothing follows the
   appearance any more, the digits included. So one pure renderer has two
-  finishes, and the coloured one takes its foreground from the button's
-  `effectiveAppearance` — which reports the menu bar's own appearance, not the
-  system's (measured once: `VibrantDark` under a light system). (KB: "メニューバーの
-  アイコンは `button.image` に入れる")
+  finishes, and the coloured one needs the menu bar's own appearance, which can
+  differ from the system's. `StatusLabel` takes it from the label's
+  `colorScheme`, which follows the menu bar: measured on a Mac whose system was
+  `Aqua` and whose menu bar was `VibrantDark` — `colorScheme` read `dark`
+  (macOS 27.0). A template image passed through `Image(nsImage:)` in the label is
+  still tinted by the menu bar (filmed). (KB: "メニューバーのアイコンは
+  `button.image` に入れる", for an `NSStatusItem`)
 - **The status item's width depends on the display mode alone.** Monospaced,
   right-aligned digits in a fixed-length item, with room reserved for the widest
   unit label of either unit system; otherwise every change in digit count — or a
   switch between bytes and bits — shifts the neighbouring icons. A panel's height, by contrast, is never fixed from today's
   content. (KB: "ビューの寸法を「今日の中身」で測って固定しない")
-- **The panel is a non-activating `NSPanel`, and the app never asks to be
-  activated (ADR-0003).** A click inside an ordinary window of an accessory app
-  activates the app, and that activation arrives while the pop-up menu the click
-  has just opened is tracking — and ends it. Measured twice: 78 ms after the menu
-  began with a popover that was only made key, and 71 ms with a popover that
-  called `NSApp.activate` on open — *right after launch*, where the OS refused the
-  request (frontmost stayed the previous app, no `didBecomeActive`; macOS 14+
-  refuses activation for up to ~30 s after launch, and on macOS 27 a status item
-  click is received by another process, so the request is not tied to a user
-  action). That second design had passed nine opens out of nine in a build started
-  from a terminal — a child of the frontmost app — and failed on the first open of
-  the signed bundle started by LaunchServices. **Test anything that depends on
-  activation from a LaunchServices launch, within the first half minute.** With
-  `.nonactivatingPanel` the same first click, 21.8 s after launch, left the menu
-  open for 1,906 ms, and no activation happened at all (one run). In a second
-  session with another app frontmost throughout: three menus opened and stayed
-  open (1,205–1,768 ms), two selections of a different value were both applied,
-  and two outside clicks both closed the panel. In later sessions: a click on the
-  item closed the open panel and that click's action, 27 ms later, was dropped as
-  designed (one of one); another app coming to the front closed it (one of one);
-  Esc closed it (two of two, read from a close with no mouse-down before it).
-  On macOS 26 (the minimum), the user went through v0.1.1 by hand on the VM and
-  reported no problem; no trace was taken there, so
-  which way macOS 26 delivers a click on the item — to the global monitor first,
-  as on macOS 27, or to the action alone — is still not known. `PanelToggle`
-  handles both. **Not measured:** a Space change and copying from the context
-  menu. `PanelWindowTests`
-  pins the style bit and scans the sources: `.activate(`, `yieldActivation` and
-  `NSPopover(` fail the build's tests. (KB: "メニューバー用 NSPanel の罠 2 件")
-- **`NSApp.isActive` reads true while the non-activating panel is key** — with no
-  `didBecomeActive` posted and another app still frontmost (measured, one run).
-  For "is the app active", ask `NSWorkspace.shared.frontmostApplication`.
-- **The panel's rules, all from siblings that paid for them:** `canBecomeKey` true
-  (Esc, text selection) and `canBecomeMain` false; never `hidesOnDeactivate` (it
-  hides without clearing `isVisible`); whether the panel is open is the app's own
-  boolean, set in `showPanel` and `hidePanel` only; **one close path** —
-  `hidePanel` — for outside clicks, a click on the item, Esc, another app coming
-  to the front and a Space change; it always releases the content, the model and
-  the update gate, and brings the monitors in line (they stay until a closing
-  click's action has been dealt with). Nothing tells a non-activating panel that
-  the user went elsewhere — a popover closed itself on Cmd-Tab and on a Space
-  change; this panel stayed open, out of sight after a Space change, and the next
-  click on the item would have closed a panel nobody could see (found in review,
-  not reported). So global + local mouse-down monitors are installed while it is
-  open, and `NSWorkspace`'s `didActivateApplication` and `activeSpaceDidChange`
-  close it. **The panel takes key status, so while it is open the keyboard is the
-  panel's** — do not document it as "does not take the keyboard"; what it never
-  takes is activation. Content taller than the visible frame (under about 566 pt)
-  is clipped; not handled. The local monitor ignores the status item button's
-  window (its action toggles; closing too would reopen) and the panel's own, a
-  menu's child window included; that decision is `PanelClick.closesPanel`, pinned
-  by a test. Under Swift 6 the handlers are nonisolated: wrap the body in
-  `MainActor.assumeIsolated` and read `event.window` outside it.
-- **A hidden title bar still has a safe area.** The panel is titled (the window
-  server then draws the rounded corners and the shadow) with the title bar hidden,
-  and SwiftUI content in it asked for 535 pt instead of 503 — 32 pt of safe area.
-  `ignoresSafeArea()` on the view did not change the size asked for;
-  `safeAreaRegions = []` on the hosting controller did. A test compares the
-  window's answer with the offscreen layout's.
-- **The window is sized from what the content reports.** The hosting controller
-  has `sizingOptions = []`; `PanelView` takes its ideal height whatever the window
-  offers (`fixedSize`) and reports it (`onGeometryChange`), and the app places the
-  window from that with `PanelPlacement.frame` — the top edge stays put, so the
-  panel grows downwards. Two things sizing one window is how it starts to jump.
-- **One click on the status item reaches two handlers, and they are matched by
-  order — never by time, and never by what the window says about itself.** On macOS 27 another process
-  hosts the menu bar, so a click on our own item reaches the *global* mouse-down
-  monitor first and the button's action 5–30 ms later (when the app is active the
-  action sometimes never comes — measured in nvme-lens, from which `PanelToggle`
-  and `statusItemOwns` are ported). The monitor closes the panel and notes that
-  the click was on the item; the next action is that click's and is dropped; with
-  no action, the note is void at the next mouse-down, so the monitor outlives the
-  panel until then.
-  What was tried first and failed on real hardware, when the panel was an
-  `NSPopover`: deciding by `isShown` plus a
-  0.25 s window. With the default close animation `isShown` stayed true for
-  534–546 ms after a close was requested (four measurements), so at two clicks a
-  second every other "open" click was read as "close" and nothing opened — which
-  is how it was reported. Without the animation the close took 2–18 ms, and the
-  order-matching toggle survived 58 clicks at a median of 183 ms apart: 57 of 57
-  transitions alternated. The panel is now a window shown and hidden without
-  animation, and its state is the app's own boolean.
-  **Do not reintroduce a time window, an animation, or a decision on the window's
-  own state** — each is this defect again under a different load.
+- **The panel is a `MenuBarExtra` window (ADR-0004), because it is the one public
+  container that keeps both things this panel needs.** While the panel is open the
+  item must look pressed, as every other menu bar item does: the menu bar keeps
+  that highlight only for `NSPopover` and `MenuBarExtra`, each through private
+  AppKit machinery inside the framework, and `NSButton.highlight(_:)` never reaches
+  the screen (five timings, all dark; filmed, macOS 27.0). The non-activating panel
+  of ADR-0003 went dark at the release and stayed dark while open (5 of 5). And a
+  pop-up menu in the panel must survive the first click after launch: a popover's
+  first click inside activates the accessory app, and the activation ends the menu
+  it opened — 78 ms and 71 ms in net-meter's own first release, 88–97 ms for a
+  popover control in a probe (2 of 2), always right after a LaunchServices launch
+  (macOS 14+ refuses activation for up to ~30 s after launch). **Test anything that
+  depends on activation from a LaunchServices launch, within the first half
+  minute** — a build started from a terminal is a child of the frontmost app and
+  passes. Measured on the release-shaped build (traced, macOS 27.0): the highlight
+  held through 5 open/close cycles with no dark frame; the interface pop-up opened
+  right after launch stayed open until the next click, three launches of three, and
+  the app never became frontmost; a click on an empty stretch of the menu bar, on
+  another app's window, and on the item each closed the panel; Esc, a Space change
+  and a display-mode change with the panel open were checked by hand. Private API is
+  not an option here, even though the popover's private call lit a panel in a probe.
+- **`NSApp.isActive` reads true while the panel is open** — with another app still
+  frontmost (the recorder's `OPEN` lines, every open). For "is the app active",
+  ask `NSWorkspace.shared.frontmostApplication`.
+- **Closing, placement and the click on the item are SwiftUI's.** The app does not
+  see the click; it learns that the panel opened and closed from `PanelHost`'s
+  `onAppear` / `onDisappear`, and that boolean is the only record of it. Everything
+  ADR-0003 needed to own a window — the order-matched toggle for a click that
+  reaches two handlers, click monitors, the one close path, the Space and
+  other-app observers, placement under the item — went with it. There is no public
+  way to close a `MenuBarExtra` window from code; nothing in the panel needs to.
+  Content taller than the visible frame (under about 566 pt) is clipped; not
+  handled.
+- **The window is sized to the content's ideal size.** `PanelView` takes its ideal
+  height whatever it is offered (`fixedSize(horizontal: false, vertical: true)`).
+  Never put a `ScrollView` (or another view that is happy at any height) in it
+  without a concrete height: its ideal height is zero and the panel collapses to
+  nothing (KB: "MenuBarExtra はコンテンツに「高さを押し付ける」"; sensor-lens-gui
+  AGENTS.md).
 - **The panel is not refreshed while one of its menus is open.** The per-second
   refresh made SwiftUI re-sync the pop-up button to the current value, and the
   item then picked was reported as that old value: the setter received the old
@@ -326,22 +284,28 @@ building the thing it is about.
   when a trace and the person who used the app disagree, read the raw lines
   before believing the script. `make build-app SWIFT_FLAGS="-Xswiftc -DTRACE"
   DIST_DIR=dist/trace` builds a signed bundle with a recorder
-  (`NET_METER_TRACE=<file>`) of every mouse-down, mouse-up and action; start it
-  with `open --env NET_METER_TRACE=<file> dist/trace/NetMeter.app`, because how
-  the app is launched is part of what is being measured. It is never part of a
-  release: `make package` refuses a non-empty `SWIFT_FLAGS`, and `make
-  verify-release` counts the recorder's symbols in the binary itself —
-  `nm <binary> | grep -ci trace` gave 0 for the release and 25 for the diagnostic
-  build. `strings` cannot tell them apart: Swift stores string
+  (`NET_METER_TRACE=<file>`) of every mouse-down and mouse-up, menu tracking,
+  activation, key windows, the panel opening and closing (`OPEN` / `CLOSE`), every
+  evaluation of the panel's host (`PANEL body`) and the appearance the label is
+  given (`LABEL`); start it with `open --env NET_METER_TRACE=<file>
+  dist/trace/NetMeter.app`, because how the app is launched is part of what is
+  being measured. Build it with its own `BUNDLE_ID=` to run it beside the installed
+  copy. It is never part of a release: `make package` refuses a non-empty
+  `SWIFT_FLAGS`, and `make verify-release` counts the recorder's symbols in the
+  binary itself — `nm <binary> | grep -ci trace` gave 0 for the release and 24 for
+  the diagnostic build. `strings` cannot tell them apart: Swift stores string
   literals of 15 bytes or fewer inline in the code, and they show up nowhere.
-  The recorder's own global monitor runs *after* the app's, so its
-  line for a closing click already says `shown=false`. Read naively, that made a
-  working fix look broken: half the clicks seemed to do nothing. Group lines by
-  event number and judge a click by the state its mouse-up line reports.
-- **Build the panel's content when it opens and release it when it closes.** An
-  eagerly created `NSHostingController` kept laying out a hidden panel at ~12% CPU
-  in load-spinner. (KB: "NSPopover 内の SwiftUI パネルは開いた時だけ生成する" — the
-  same holds for a panel window.)
+- **The panel's content is built once and then only pushed to while it is open.**
+  An eagerly created `NSHostingController` kept laying out a hidden panel at ~12%
+  CPU in load-spinner (KB: "NSPopover 内の SwiftUI パネルは開いた時だけ生成する").
+  `MenuBarExtra` builds the content on the first open and keeps it: the recorder
+  shows one `PANEL body` per launch, none on later opens. So what must stay still
+  while closed is the model: `pushPanelUpdate` does nothing unless the panel is
+  open, nothing in the panel animates on its own, and nothing but the label
+  observes the once-a-second state (`MenuBarShapeTests` pins all three at the
+  source). Measured CPU time over 30 s, against the installed `NSPanel` build:
+  0.43 s vs 0.42 s before the panel was ever opened, 0.48 s vs 0.49 s after it had
+  been used and closed.
 - **Borderless icon buttons in the panel need `.focusable(false)`**, or the first
   one takes keyboard focus and draws a focus ring the moment the panel opens.
   (status-lens and load-spinner AGENTS.md)
@@ -437,23 +401,12 @@ building the thing it is about.
   IPv6 address needs up to 265 pt and was cut in the middle. Addresses now get
   the panel's full width in a monospaced font, and a test measures the 39-character
   worst case against the width. The previews and tests use that address too.
-- **The panel follows the item's window by `NSWindow.didMoveNotification` — not
-  by waiting.** Display mode is changed from inside the panel, which resizes the
-  very item the panel hangs from. Setting `length` resizes the item's window at
-  once but leaves its origin where it was, so its right edge is wrong; the menu
-  bar moves it back 29–41 ms later and the notification follows (three changes
-  out of three; `NET_METER_TRACE_CYCLE=1` on the diagnostic build repeats the
-  measurement with no click and no panel). What was tried first: placing again on
-  the next turn of the run loop. That read the in-between frame and left the
-  panel 56–57 pt to the right after going from graph only back to numbers and
-  graph (same mode, x 2102 on open and 2159 after the change, twice) — flagged as
-  unmeasured by the pre-release review and then measured. A delay instead of the
-  notification would be the same guess with a bigger number. After the change:
-  three mode changes with the panel open, one placement each, 44–50 ms after the
-  change, at the item's centre every time, and back at the opening x for the
-  opening mode. The item also moved by 1–5 pt twice with nothing of ours
-  happening — a neighbour changed width — so the notification is needed for more
-  than the display mode.
+- **With the panel open, changing the display mode resizes the item the panel
+  hangs from, and SwiftUI moves the window with it.** ADR-0003's panel had to follow
+  the item's window itself: setting `length` resized the item's window at once but
+  left its right edge wrong for 29–41 ms, and placing on the next run-loop turn left
+  the panel 56–57 pt off. With `MenuBarExtra` this is not the app's job; checked by
+  hand (the maintainer, 2026-09-21), not traced.
 - **Single instance covers the bundle, not the bare binary.**
   `LSMultipleInstancesProhibited` stops LaunchServices launches;
   `singleInstanceDecision` stops direct exec of the bundled binary and `open -n`
@@ -469,10 +422,9 @@ building the thing it is about.
   decisions, rejected alternatives, the measured platform constraints, and the
   amendments made after the independent design review.
 - Spikes: `spikes/README.md`.
-- Siblings of the same shape (menu bar `NSStatusItem` + a SwiftUI panel):
-  **task-clock-gui and instant-translate for the non-activating panel** (the
-  window, the one close path, placement), status-lens for dismissal, focus,
-  settings reaching the menu bar and launch at login, load-spinner for the status
-  item, the lazy content and the release wiring, nvme-lens for `PanelToggle`. Read
-  their `AGENTS.md` files in full before changing the panel — a sibling's code
-  also carries the lessons it has not applied yet.
+- Siblings of the same shape (a `MenuBarExtra` window): claude-usage-lens-gui,
+  gem-usage-lens-gui and active-lens-gui. Siblings of the shape this app had until
+  ADR-0004 (menu bar `NSStatusItem` + a SwiftUI panel): task-clock-gui and
+  instant-translate for the non-activating panel, status-lens, nvme-lens and
+  load-spinner for the popover — read them for what an own container costs before
+  proposing one. A sibling's code also carries the lessons it has not applied yet.
