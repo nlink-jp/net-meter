@@ -4,6 +4,14 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
+## [Unreleased]
+
+### Documentation
+
+- ADR-0004 records the 0.2.0 release build on macOS 26, the minimum: the panel
+  works and the item stays highlighted while it is open (hand check). It was the
+  first item on the "not measured" list.
+
 ## [0.2.0] - 2026-09-21
 
 ### Changed

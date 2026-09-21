@@ -75,8 +75,9 @@ v0.1.1; a clean build of the same source for the hand check.
 | Work while closed | the content is built once, on the first open, and kept; CPU over 30 s matched v0.1.1: 0.43 s vs 0.42 s before any open, 0.48 s vs 0.49 s after use |
 | Copy from an address's context menu, overall look | fine (hand check) |
 | Keyboard | SwiftUI installs a main menu: ⌘C copies a selected address (hand check), and ⌘Q quit net-meter while the panel had the keyboard (hand check) — so the termination command is replaced with nothing: the menu has no Quit item (read from the app's AX menu bar) and ⌘Q no longer quits (hand check). ⌘H and ⌘W stay; not measured |
+| macOS 26 (the verification VM), the 0.2.0 build from GitHub Releases | the panel worked and the item stayed highlighted while it was open (hand check, 2026-09-22) |
 
-Not measured: macOS 26, the minimum; a Space change; a unit change with the panel open; the menu bar's appearance changing while the app runs; opening over a full-screen app; a right-click outside the panel; content taller than the visible frame (the 566 pt limit was measured on the old window).
+Not measured: a Space change; a unit change with the panel open; the menu bar's appearance changing while the app runs; opening over a full-screen app; a right-click outside the panel; content taller than the visible frame (the 566 pt limit was measured on the old window).
 
 ## Consequences
 
