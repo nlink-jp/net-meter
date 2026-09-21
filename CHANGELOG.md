@@ -4,7 +4,7 @@ All notable changes to net-meter are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 Semantic Versioning.
 
-## [Unreleased]
+## [0.2.0] - 2026-09-21
 
 ### Changed
 
@@ -99,7 +99,7 @@ Semantic Versioning.
 - No permission of any kind: no privacy grant, no entitlement, no administrator
   rights, and no network connection of its own. About 0.3% CPU while resident —
   measured before the panel and the graph existed; the shipped app measures
-  about 1.3% (see Unreleased).
+  about 1.3% (see 0.2.0).
 - A single-instance guard, so a second copy exits instead of stacking a second
   menu bar item.
 - `make test` checks the documents as well as the code: relative links resolve,
