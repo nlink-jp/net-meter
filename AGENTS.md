@@ -21,8 +21,11 @@ not track progress — `git log` and `CHANGELOG.md` do.
 **Not yet measured** (the rules are built to fail safe whatever these show): a
 wake from sleep, an adapter being unplugged, a switch between Wi-Fi and wired, a
 full-tunnel VPN, a light menu bar with the coloured finish, a Mac with
-displays of mixed scale, and the `MenuBarExtra` window on macOS 26 (everything in
-ADR-0004's verification was measured on macOS 27.0).
+displays of mixed scale, and — from ADR-0004 — the `MenuBarExtra` window on macOS 26
+(everything in its verification was measured on macOS 27.0), a Space change with the
+panel open, a unit change with the panel open, the menu bar's appearance changing
+while the app runs, opening over a full-screen app, a right-click outside the
+panel, and content taller than the visible frame.
 
 ## Build & test
 
@@ -219,8 +222,9 @@ building the thing it is about.
   finishes, and the coloured one needs the menu bar's own appearance, which can
   differ from the system's. `StatusLabel` takes it from the label's
   `colorScheme`, which follows the menu bar: measured on a Mac whose system was
-  `Aqua` and whose menu bar was `VibrantDark` — `colorScheme` read `dark`
-  (macOS 27.0). A template image passed through `Image(nsImage:)` in the label is
+  `Aqua` and whose menu bar was `VibrantDark` — `colorScheme` read `dark`, and at
+  launch it followed the item's window from `VibrantLight` to `VibrantDark` within
+  48 ms (macOS 27.0). A change while the app runs is not measured. A template image passed through `Image(nsImage:)` in the label is
   still tinted by the menu bar (filmed). (KB: "メニューバーのアイコンは
   `button.image` に入れる", for an `NSStatusItem`)
 - **The status item's width depends on the display mode alone.** Monospaced,
@@ -235,20 +239,26 @@ building the thing it is about.
   AppKit machinery inside the framework, and `NSButton.highlight(_:)` never reaches
   the screen (five timings, all dark; filmed, macOS 27.0). The non-activating panel
   of ADR-0003 went dark at the release and stayed dark while open (5 of 5). And a
-  pop-up menu in the panel must survive the first click after launch: a popover's
-  first click inside activates the accessory app, and the activation ends the menu
-  it opened — 78 ms and 71 ms in net-meter's own first release, 88–97 ms for a
-  popover control in a probe (2 of 2), always right after a LaunchServices launch
-  (macOS 14+ refuses activation for up to ~30 s after launch). **Test anything that
-  depends on activation from a LaunchServices launch, within the first half
-  minute** — a build started from a terminal is a child of the frontmost app and
-  passes. Measured on the release-shaped build (traced, macOS 27.0): the highlight
-  held through 5 open/close cycles with no dark frame; the interface pop-up opened
-  right after launch stayed open until the next click, three launches of three, and
-  the app never became frontmost; a click on an empty stretch of the menu bar, on
-  another app's window, and on the item each closed the panel; Esc, a Space change
-  and a display-mode change with the panel open were checked by hand. Private API is
-  not an option here, even though the popover's private call lit a panel in a probe.
+  pop-up menu in the panel must work from the first click: in a popover that was
+  only made key, the first click inside activates the accessory app whenever it is
+  inactive, and the activation ends the menu that click opened — 78 ms in
+  net-meter's first release, 88–97 ms for a popover control in a probe (2 of 2).
+  Activating the app when the panel opens hid that everywhere except right after a
+  LaunchServices launch, where macOS 14+ refuses activation for up to ~30 s and the
+  menu ended 71 ms in. **Test anything that depends on activation from a
+  LaunchServices launch, within the first half minute** — a build started from a
+  terminal is a child of the frontmost app and passes. Measured on the
+  release-shaped build (traced, macOS 27.0): the highlight held through 5
+  open/close cycles with no dark frame; the interface pop-up opened right after
+  launch stayed open until the next click, three launches of three, and the app
+  never became frontmost; a click on an empty stretch of the menu bar, on another
+  app's window, and on the item each closed the panel; Esc and a display-mode change
+  with the panel open were checked by hand. Private API is not an option here, even
+  though the popover's private call lit a panel in a probe.
+- **The app never asks to be activated** (ADR-0003 decision 2, kept by ADR-0004).
+  A request made at the wrong moment is refused right after launch, and a design
+  that depends on it passes everywhere except there. `MenuBarShapeTests` scans every
+  source for `.activate(`, `yieldActivation`, `unhide(` and `.popover(`.
 - **`NSApp.isActive` reads true while the panel is open** — with another app still
   frontmost (the recorder's `OPEN` lines, every open). For "is the app active",
   ask `NSWorkspace.shared.frontmostApplication`.
@@ -258,9 +268,25 @@ building the thing it is about.
   ADR-0003 needed to own a window — the order-matched toggle for a click that
   reaches two handlers, click monitors, the one close path, the Space and
   other-app observers, placement under the item — went with it. There is no public
-  way to close a `MenuBarExtra` window from code; nothing in the panel needs to.
-  Content taller than the visible frame (under about 566 pt) is clipped; not
-  handled.
+  way to close a `MenuBarExtra` window from code, so **switching to another app
+  without a click (⌘Tab) leaves the panel open** until the next click (measured:
+  another app launched and became frontmost, the panel stayed; v0.1.1 closed it).
+  Accepted in ADR-0004. A Space change is not measured. Content taller than the
+  visible frame (under about 566 pt) was clipped in the old window; not re-checked,
+  not handled.
+- **SwiftUI's lifecycle installs a main menu, and while the panel is open the
+  keyboard reaches it.** ⌘C copies a selected address (hand check) — which v0.1.1,
+  with no main menu, could not do. ⌘Q quit net-meter the same way, so a ⌘Q meant
+  for another app could take the meter down: the termination command is replaced
+  with nothing (`CommandGroup(replacing: .appTermination) {}`), the menu has no
+  Quit item any more (read from the AX menu bar) and ⌘Q does nothing (hand check);
+  `MenuBarShapeTests` pins it. The panel's Quit button is the way to quit. ⌘H and
+  ⌘W are still there; not measured.
+- **The item's accessibility label is its AXTitle; an accessibility value never
+  arrives.** Read back from the item's AX element (macOS 27.0): `.accessibilityValue`
+  on the label was dropped, which lost the spoken rates v0.1.1 carried as the item's
+  AXValue. The rates are part of the label now ("net-meter, Up 0 KB/s, down
+  1 KB/s").
 - **The window is sized to the content's ideal size.** `PanelView` takes its ideal
   height whatever it is offered (`fixedSize(horizontal: false, vertical: true)`).
   Never put a `ScrollView` (or another view that is happy at any height) in it

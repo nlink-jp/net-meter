@@ -12,11 +12,18 @@ Semantic Versioning.
   other menu bar item. It used to lose the highlight the moment the mouse button
   came up. macOS 27 keeps that highlight only for the panels it provides itself,
   so the item and the panel are now a SwiftUI `MenuBarExtra` window
-  ([ADR-0004](docs/en/adr/0004-menubarextra-panel.md)). What the panel shows and
-  how it behaves are unchanged: it opens below the item, the settings' pop-up
-  menus work from the first click after launch, and Esc, a click elsewhere, a
-  click on the item, switching to another app or changing Space closes it. It
-  never switches you away from the app you are working in.
+  ([ADR-0004](docs/en/adr/0004-menubarextra-panel.md)). What the panel shows is
+  unchanged. It still opens below the item without switching you away from the
+  app you are working in, the settings' pop-up menus work from the first click
+  after launch, and Esc, a click outside the panel or a click on the item closes
+  it. Two things behave differently:
+  - Switching to another app with the keyboard (⌘Tab) leaves the panel open until
+    your next click; before, it closed.
+  - ⌘C now copies a selected address or version. ⌘Q does nothing while the panel
+    is open, as before; use the panel's Quit button.
+- VoiceOver reads the item as one name, "net-meter, Up …, down …", where it
+  used to read the name and the rates separately: the new item passes a name on
+  and drops a separate value.
 
 ### Documentation
 

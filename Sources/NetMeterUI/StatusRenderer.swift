@@ -25,12 +25,13 @@ public struct StatusContent: Equatable, Sendable {
 public enum StatusFinish: Equatable, Sendable {
     /// Drawn in black with alpha and marked as a template: the OS picks the colour.
     case template
-    /// Colours baked in; the foreground follows the menu bar the button reports.
+    /// Colours baked in; the foreground follows the menu bar's appearance, which
+    /// the caller reads (ADR-0004: the `MenuBarExtra` label's `colorScheme`).
     case coloured(darkMenuBar: Bool)
 }
 
-/// ADR-0002: one pure function from "values to show + finish" to an image for
-/// `NSStatusItem.button.image`. The width depends on the display mode alone —
+/// ADR-0002: one pure function from "values to show + finish" to the menu bar
+/// item's image (the `MenuBarExtra` label, ADR-0004). The width depends on the display mode alone —
 /// never on the values, and not on the unit either — so neighbouring items move
 /// only when the user changes what the item shows.
 @MainActor

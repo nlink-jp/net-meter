@@ -57,8 +57,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             coloured: controller.settings.coloured,
             spoken: UIStrings.spoken(controller.content.reading, unit: controller.content.unit)
         )
-        // A placeholder until the panel first opens: `panelDidOpen` replaces it
-        // before anything is drawn.
+        // A placeholder for the few moments before launch finishes, replaced with
+        // real values right after the first tick (`applicationDidFinishLaunching`).
         panelModel = PanelModel(snapshot: controller.panelSnapshot(
             info: [:], pathOrder: [], loginItem: .off,
             version: displayVersion(bundleShortVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String),
@@ -88,6 +88,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onChange = { [weak self] in self?.render() }
     }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // LSUIElement already makes the bundle an accessory; a bare binary
+        // (`make run`) has no Info.plist, and without this it would get a Dock icon.
+        NSApp.setActivationPolicy(.accessory)
+        #if TRACE
+        Trace.install(self)
+        #endif
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiatedAllowingIdleSystemSleep],
@@ -110,9 +119,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         tick()
-        #if TRACE
-        Trace.install(self)
-        #endif
+        // The content is built on the first open, from whatever the model holds
+        // then; let that be the real interface list and login state, not the
+        // placeholder from `init`.
+        panelModel.snapshot = snapshot()
     }
 
     @objc private func tick() {
@@ -132,8 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: the panel
 
-    /// From the panel content's `onAppear`: the snapshot is brought up to date
-    /// before the first frame, then kept so once a second.
+    /// From the panel content's `onAppear`: the snapshot is brought up to date,
+    /// then kept so once a second. Whether this lands before the window's first
+    /// frame is not measured; by hand, no stale frame was seen.
     func panelDidOpen() {
         #if TRACE
         Trace.log("OPEN    active=\(NSApp.isActive) frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "nil")")
@@ -150,6 +161,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelOpen = false
         loginItemError = nil
         updateGate.reset()
+        // The content is kept while closed. Leave it holding a current snapshot
+        // without the cleared error, so a reopen does not start from an old one.
+        panelModel.snapshot = snapshot()
     }
 
     private func pushPanelUpdate() {
@@ -164,8 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func menuDidEndTracking() {
         guard panelOpen, updateGate.menuDidEndTracking() else { return }
-        // Not here and now: the pop-up button sends its action after this
-        // notification, and the refresh must not get in before the selection.
+        // The selection itself arrived before this notification (about 190 ms
+        // before it, measured); the held refresh goes out on the next turn of the
+        // run loop, after the pop-up button has finished with its own update.
         DispatchQueue.main.async { [weak self] in
             guard let self, self.panelOpen else { return }
             self.pushPanelUpdate()

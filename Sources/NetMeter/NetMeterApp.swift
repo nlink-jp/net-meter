@@ -24,13 +24,20 @@ struct NetMeterApp: App {
             StatusLabel(model: app.statusModel)
         }
         .menuBarExtraStyle(.window)
+        .commands {
+            // SwiftUI's app lifecycle installs a main menu, and while the panel has
+            // the keyboard ⌘Q quit net-meter (checked by hand) — a ⌘Q meant for
+            // another app would take the meter down. v0.1.1 had no main menu and ⌘Q
+            // did nothing; the panel's own Quit button is the way to quit.
+            CommandGroup(replacing: .appTermination) {}
+        }
     }
 }
 
 /// The item: one image from the one renderer (ADR-0002). The coloured finish takes
-/// its foreground from the appearance SwiftUI gives the label. ADR-0002 needs the
-/// menu bar's own appearance, which can differ from the system's; whether this is
-/// it is one of ADR-0004's checks.
+/// its foreground from the label's `colorScheme`, which follows the menu bar's own
+/// appearance rather than the system's (ADR-0004: `dark` under a `VibrantDark` menu
+/// bar on an `Aqua` system). A change while running is not measured.
 struct StatusLabel: View {
     @ObservedObject var model: StatusModel
     @Environment(\.colorScheme) private var colorScheme
@@ -38,8 +45,10 @@ struct StatusLabel: View {
     var body: some View {
         let finish: StatusFinish = model.coloured ? .coloured(darkMenuBar: colorScheme == .dark) : .template
         Image(nsImage: StatusRenderer.image(content: model.status, finish: finish))
-            .accessibilityLabel("net-meter")
-            .accessibilityValue(model.spoken)
+            // The label's accessibility label becomes the item's AXTitle, and an
+            // accessibilityValue is dropped (read back from the item's AX element,
+            // macOS 27.0). The rates therefore go into the one string that arrives.
+            .accessibilityLabel(Text("net-meter, \(model.spoken)"))
         #if TRACE
             .onChange(of: colorScheme, initial: true) { _, scheme in
                 let bars = NSApp.windows.filter { $0.level == .statusBar }

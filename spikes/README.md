@@ -159,3 +159,39 @@ The 0.1.0 changelog's "about 0.3%" came from the first live build of 2026-09-20,
 before the panel and the one-bar-a-second graph, and was not re-measured when
 they landed. One machine, one run each: enough to say the old figure was wrong,
 not enough to call this one a specification.
+
+## The item's highlight and the panel's container (ADR-0004, not a spike)
+
+The tools for this were throwaway and are not in the repository; the method is
+what matters, and each step uses only public API.
+
+- **Is the item highlighted?** Film only the item's rectangle with
+  `SCStream` (`sourceRect` = the item's frame, 60 fps, cursor hidden) and judge
+  each frame by the median brightness of its background: the pill behind a
+  pressed or highlighted item lifts it well above the idle level, and the median
+  ignores the digits and the graph. The threshold is half-way between the idle
+  level and the first frame after the mouse-down. An in-process
+  `isHighlighted` is not evidence: another process draws the menu bar, and
+  `highlight(true)` left the value true while the screen stayed dark.
+- **Where is the item?** Ask the app's own accessibility element
+  (`AXExtrasMenuBar` → first child → position and size), and wait until two reads
+  0.3–0.5 s apart agree: a newly launched item moves while the menu bar settles.
+- **Clicks** are `CGEvent` mouse-down / mouse-up posted to `.cghidEventTap`,
+  90 ms apart, at the item's centre. Put the cursor back afterwards.
+- **Run the build under test beside the installed copy** with its own bundle id
+  (`make build-app BUNDLE_ID=... DIST_DIR=...`), launched with `open` so that
+  LaunchServices starts it, and remove its preferences domain and its
+  LaunchServices registration (`lsregister -u`) afterwards.
+- **Who lights the item** was found with lldb on small probe apps, opened and
+  closed from code: `NSPopover.show` calls the status item's private
+  `_willPresentContent:cancellationHandler:`; `MenuBarExtra` receives
+  `_beginExpandedInterfaceSession:` from the menu bar. That is how "no public API
+  for a panel of our own" was established — nothing of it is used by the app.
+- **A pop-up menu right after launch**: launch through LaunchServices, open the
+  panel, click the pop-up button (found through the accessibility tree), and read
+  `NSMenu.didBeginTracking` / `didEndTracking` and `NSApplication.didBecomeActive`
+  from the diagnostic build. Always run a popover control alongside: a harness
+  that cannot reproduce ADR-0003's defect cannot show its absence.
+
+Results are in ADR-0004's table. The org knowledge base has the general form
+(macos-gui: "メニューバー項目の「開いている間のハイライト」は器が決める").

@@ -100,7 +100,8 @@ window. This decision's reason still stands for `NSPopover` — a probe reproduc
 click after launch, 88–97 ms in (2 of 2) — but not for `MenuBarExtra`, where the same menu stayed open
 (3 of 3). Decisions 1, 3, 4, 5 and 6 are superseded; decision 2 (the app never asks to be activated) still
 holds; of decision 7, the content is now built once and kept, pushed to only while open, the update gate
-stays, and the click-and-action matching went with the window.
+stays, and the click-and-action matching went with the window. The consequence about ⌘C no longer holds:
+SwiftUI's lifecycle installs a main menu, and ⌘C copies from the panel (hand check).
 
 ## References
 

@@ -32,7 +32,7 @@ MACOS_SDK := $(shell xcrun --sdk macosx --show-sdk-version)
 SDK_LINK_FLAGS := -Xlinker -platform_version -Xlinker macos -Xlinker $(MACOS_MIN) -Xlinker $(MACOS_SDK)
 
 # Extra compiler flags. Empty for a release. A diagnostic bundle that records
-# clicks, actions, menu tracking and activation is built with
+# clicks, menu tracking, activation and the panel opening and closing is built with
 #   make build-app SWIFT_FLAGS="-Xswiftc -DTRACE" DIST_DIR=dist/trace
 # and is never released: `package` refuses non-empty flags, and `verify-release`
 # looks at the binary itself for the recorder's symbols.

@@ -373,8 +373,9 @@ API. A13's reason for leaving the popover was checked against `MenuBarExtra` and
 pop-up menu opened right after a LaunchServices launch stayed open (3 of 3), where a popover ended
 it 88–97 ms in (2 of 2). §3's reason for not using `MenuBarExtra` was checked too and did not hold:
 net-meter's own two-line image shows as its label and updates once a second. The verification — the
-highlight, the menus, every way of closing, the label's appearance, CPU while closed — is recorded in
-ADR-0004.
+highlight, the menus, the ways of closing that were tried, the label's appearance, CPU while closed — is
+recorded in ADR-0004, with what it did not cover: switching to another app with the keyboard now leaves
+the panel open until the next click.
 
 ---
 

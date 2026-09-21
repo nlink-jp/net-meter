@@ -28,10 +28,10 @@ RETIRED: dict[str, str] = {
     "automaticChoice": "a string of the interim settings menu, which the panel replaced",
     "menuNeedsUpdate": "the interim settings menu was replaced by the panel",
     "secondsPerColumn": "graph bars are samples, not time buckets (RFP Amendment A12)",
-    "sameClickWindow": "clicks and actions are matched by order, never by time (PanelToggle)",
-    "monitorClosedAt": "clicks and actions are matched by order, never by time (PanelToggle)",
-    "PopoverClick": "renamed PanelClick when the popover went (ADR-0003)",
-    "popoverDidClose": "the panel is a non-activating NSPanel with one close path, hidePanel (ADR-0003)",
+    "sameClickWindow": "clicks were matched by order, never by time; since ADR-0004 SwiftUI handles them",
+    "monitorClosedAt": "clicks were matched by order, never by time; since ADR-0004 SwiftUI handles them",
+    "PopoverClick": "renamed when the popover went (ADR-0003), then withdrawn (ADR-0004)",
+    "popoverDidClose": "the popover went in ADR-0003; the panel is a MenuBarExtra window (ADR-0004)",
     # ADR-0004: the item and the panel are a MenuBarExtra window; everything that
     # owning a window of our own required went with it.
     "PanelToggle": "SwiftUI handles the click on the item (ADR-0004)",

@@ -93,3 +93,15 @@ with mixed displays.
 Decision 5's "the unit field reserves the longest unit" is implemented as **the longest
 across both unit systems**, bytes and bits. The first implementation looked at the selected
 unit system only, and switching units changed the width by 2 pt.
+
+### 2026-09-21 — the image is a `MenuBarExtra` label (Decisions 1–3, after ADR-0004)
+
+The item is now the label of a SwiftUI `MenuBarExtra` (ADR-0004). Decision 1 holds with a new place for
+the result: the one function's image is shown as `Image(nsImage:)` in the label, not put in
+`button.image`. A template image is still tinted by the menu bar there (filmed). Decision 2's coloured
+finish no longer reads a button: it takes dark or light from the label's `colorScheme`, which follows the
+menu bar's own appearance rather than the system's — `dark` under a `VibrantDark` menu bar on an `Aqua`
+system, and at launch it followed the item's window from `VibrantLight` to `VibrantDark` within 48 ms
+(macOS 27.0). Decision 3 still holds in effect: the label is drawn again whenever its state changes, once a
+second, and reads the current `colorScheme` each time. A change of the menu bar's appearance while the app
+runs was not measured.

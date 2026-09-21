@@ -42,8 +42,8 @@ interface's addresses and link speed, the peaks of those three minutes, and the
 totals since launch. The link speed is what the interface reports, not a limit on
 what it carries. Opening the panel does not switch you away from the app you are
 working in. While it is open the keyboard belongs to the panel: Esc closes it, and
-so does clicking anywhere else, clicking the item again, switching to another app,
-or changing Space.
+so does a click outside the panel or on the item again. Switching to another app
+with the keyboard (⌘Tab) leaves it open until your next click.
 The settings are in the same panel:
 
 | Setting | Choices |
