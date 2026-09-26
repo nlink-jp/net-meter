@@ -6,6 +6,12 @@ Semantic Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- The release zip no longer carries AppleDouble (`._*`) entries: the app is
+  zipped with `ditto --norsrc --noextattr`, so its signature survives unpacking
+  with `unzip`. `make verify-release` refuses a zip that carries them.
+
 ### Documentation
 
 - ADR-0004 records the 0.2.0 release build on macOS 26, the minimum: the panel
